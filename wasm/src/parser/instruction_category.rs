@@ -1,62 +1,9 @@
 use std::io;
-use crate::type_section_data::ValueType;
 
-// We have a couple of interesting problems around consuming instructions.
-// When we read them from a file, we're only interested in walking the instruction list,
-// but we need to keep them in a space efficient way (the original format is pretty good for
-// that), which means we're also going to need to parse the instructions from a vector.
-// We could use a reader to do that I guess. That works well because all of our utilities
-// work like that. But... It makes random access hard - we're going to need to augment
-// the reader with "seeking" I guess.
-
-// Using a reader during execution doesn't make any sense though - we will end up having
-// to accumulate the instructions, which is daft. So instead, we use an instruction iterator which
-// we might have different implementations of
-
-// Maybe trying to force all of this into a rust paradigm doesn't make any sense.
-
-#[derive(Debug)]
-pub enum BlockType {
-    Void,
-    Value(ValueType),
-}
-
-trait InstructionAccumulator {
-    fn ensure_bytes(&mut self, bytes: usize) -> io::Result<()>;
-    fn get_byte(&self, offset: usize) -> u8;
-
-    fn ensure_leb_at(&mut self, offset: usize) -> io::Result<usize> {
-        let mut number_length: usize = 1;
-        loop {
-            self.ensure_bytes(offset + number_length)?;
-
-            if 0 == (self.get_byte(offset + number_length - 1) & 0x80) {
-                return Ok(number_length);
-            }
-
-            number_length += 1;
-        }
-    }
-
-    fn get_leb_u32_at(&self, offset: usize) -> u32 {
-        let mut pos: usize = offset;
-        let mut result: u32 = 0;
-        let mut shift = 0;
-
-        loop {
-            let byte = self.get_byte(pos);
-            pos += 1;
-            result |= u32::from(byte & 0x7f) << shift;
-            if (byte & 0x80) == 0 {
-                return result;
-            }
-            shift += 7;
-        }
-    }
-}
+use crate::parser::InstructionAccumulator;
 
 #[derive(Debug, PartialEq)]
-enum InstructionCategory {
+pub enum InstructionCategory {
     SingleByte,
     SingleLebInteger,
     SingleFloat,
@@ -199,85 +146,5 @@ impl InstructionCategory {
         instr_size += acc.ensure_leb_at(offset + instr_size)?;
 
         Ok(instr_size)
-    }
-}
-
-struct ReaderInstructionAccumulator<'a, T: io::Read> {
-    reader: &'a mut T,              // Where we get the instructions from
-    buf: Vec<u8>,                   // We accumulate the instructions in here
-    next_inst: usize,               // The position of the next instruction byte in the buffer
-}
-
-impl<'a, T> ReaderInstructionAccumulator<'a, T> where T: io::Read {
-    pub fn new(reader: &'a mut T) -> Self {
-        Self {
-            reader: reader,
-            buf: Vec::new(),
-            next_inst: 0,
-        }
-    }
-
-    pub fn move_to_next(&mut self) -> io::Result<bool> {
-        // Move past the current instruction
-        self.next_inst = self.buf.len();
-
-        // Start by ensuring we have at least one byte
-        self.ensure_bytes(1)?;
-
-        let lead_byte = self.get_byte(0);
-        let instruction_category = InstructionCategory::from_lead_byte(lead_byte)?;
-        instruction_category.ensure_instruction(self, 0)?;
-
-        Ok(instruction_category != InstructionCategory::End)
-    }
-
-    pub fn instr_bytes(self) -> Vec<u8> {
-        self.buf
-    }
-
-    pub fn this_instr_bytes(&self) -> &[u8] {
-        &self.buf[self.next_inst..]
-    }
-}
-
-impl<'a, T> InstructionAccumulator for ReaderInstructionAccumulator<'a, T> where T: io::Read {
-    fn ensure_bytes(&mut self, bytes: usize) -> io::Result<()> {
-        let required_bytes = self.next_inst + bytes;
-        const BUF_SIZE: usize = 16;
-        let mut buf: [u8; BUF_SIZE] = [0; BUF_SIZE];
-
-        while self.buf.len() < required_bytes {
-            // Got to be careful not to read more bytes than we were asked to
-            let bytes_to_read = std::cmp::min(BUF_SIZE, required_bytes - self.buf.len());
-
-            self.reader.read_exact(&mut buf[0..bytes_to_read])?;
-            self.buf.extend_from_slice(&buf[0..bytes_to_read]);
-        }
-
-        Ok(())
-    }
-
-    fn get_byte(&self, idx: usize) -> u8 {
-        assert!(self.buf.len() > self.next_inst + idx, "Byte is not available");
-
-        self.buf[self.next_inst + idx]
-    }
-}
-
-#[derive(Debug)]
-pub struct Expr {
-    // So, a basic expr is just the bytes that make up the expression
-    instr: Vec<u8>,
-}
-
-impl Expr {
-    pub fn read<T: io::Read>(reader: &mut T) -> io::Result<Expr> {
-        let mut acc = ReaderInstructionAccumulator::new(reader);
-        
-        while acc.move_to_next()? {
-            // Nothing in here - we're just accumulating the instructions
-        }
-
-        Ok(Expr { instr: acc.instr_bytes() })
     }
 }

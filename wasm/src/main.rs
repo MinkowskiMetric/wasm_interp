@@ -1,11 +1,10 @@
 use std::env;
 
+mod core;
+mod parser;
+mod reader;
+
 mod module;
-mod reader_util;
-mod section;
-mod type_section_data;
-mod import_section_data;
-mod expr;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
