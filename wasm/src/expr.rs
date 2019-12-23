@@ -97,7 +97,7 @@ impl InstructionCategory {
             0x45 ..= 0xBF       => Ok(InstructionCategory::SingleByte),
         //  0xC0 ..= 0xFF are not listed in the spec
 
-            _ => unimplemented!("Unimplemented instruction lead byte 0x{:02x}", lead_byte) //Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown instruction lead byte")),
+            _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown instruction lead byte")),
         }
     }
 
@@ -109,7 +109,7 @@ impl InstructionCategory {
             InstructionCategory::SingleFloat        => acc.ensure_bytes(offset + 5).map(|_| 5),
             InstructionCategory::SingleDouble       => acc.ensure_bytes(offset + 9).map(|_| 9),
             InstructionCategory::Block(allow_else)  => self.ensure_block_instruction(*allow_else, acc, offset),
-            InstructionCategory::MemSizeGrow        => unimplemented!(),
+            InstructionCategory::MemSizeGrow        => self.ensure_mem_size_grow(acc, offset),
             InstructionCategory::MemInstr           => self.ensure_mem_instr(acc, offset),
             InstructionCategory::IndirectCall       => self.ensure_indirect_call(acc, offset),
             InstructionCategory::BranchTable        => self.ensure_branch_table(acc, offset),
@@ -121,6 +121,16 @@ impl InstructionCategory {
         let offset_size = acc.ensure_leb_at(offset + 1 + align_size)?;
 
         Ok(1 + align_size + offset_size)
+    }
+
+    fn ensure_mem_size_grow<T: InstructionAccumulator>(&self, acc: &mut T, offset: usize) -> io::Result<usize> {
+        let mem_idx_size = acc.ensure_leb_at(offset + 1)?;
+
+        if acc.get_leb_u32_at(offset + 1) != 0x00 {
+            Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid memory value in mem grow or shrink call"))
+        } else {
+            Ok(1 + mem_idx_size)
+        }
     }
 
     fn ensure_indirect_call<T: InstructionAccumulator>(&self, acc: &mut T, offset: usize) -> io::Result<usize> {
