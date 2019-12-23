@@ -13,7 +13,6 @@ use crate::expr::Expr;
 
 use std::convert::TryFrom;
 use std::io;
-use std::io::Read;
 
 #[derive(Debug)]
 pub struct Global {

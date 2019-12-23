@@ -1,6 +1,4 @@
 use std::env;
-use std::fs::File;
-use std::io::Read;
 
 mod module;
 mod reader_util;
