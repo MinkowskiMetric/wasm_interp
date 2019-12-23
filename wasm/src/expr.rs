@@ -1,6 +1,4 @@
 use std::io;
-use crate::reader_util::ReaderUtil;
-
 use crate::type_section_data::ValueType;
 
 // We have a couple of interesting problems around consuming instructions.
