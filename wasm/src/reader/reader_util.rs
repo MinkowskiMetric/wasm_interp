@@ -6,6 +6,7 @@ pub trait ReaderUtil {
     fn read_leb_u32(&mut self) -> std::result::Result<u32, std::io::Error>;
     fn read_vec<R, T: Fn(&mut Self) -> std::io::Result<R>>(&mut self, read_fn: T) -> std::io::Result<Vec<R>>;
     fn read_name(&mut self) -> std::io::Result<String>;
+    fn read_bytes_to_end(&mut self) -> std::io::Result<Vec<u8>>;
 }
 
 impl<T> ReaderUtil for T where T: io::Read {
@@ -47,5 +48,11 @@ impl<T> ReaderUtil for T where T: io::Read {
             Ok(s) => Ok(s),
             Err(_) => Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF8 in name")),
         }
+    }
+
+    fn read_bytes_to_end(&mut self) -> std::io::Result<Vec<u8>> {
+        let mut bytes: Vec<u8> = Vec::new();
+        self.read_to_end(&mut bytes)?;
+        Ok(bytes)
     }
 }
