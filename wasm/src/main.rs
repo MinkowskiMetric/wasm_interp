@@ -4,7 +4,17 @@ mod core;
 mod parser;
 mod reader;
 
-mod module;
+use std::io::{self, BufReader};
+use std::fs::File;
+
+use reader::TypeReader;
+
+fn load_module_from_path(file: &str) -> io::Result<core::Module> {
+    let file = File::open(file)?;
+    let mut file = BufReader::new(file);
+
+    core::Module::read(&mut file)
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -12,12 +22,10 @@ fn main() {
     if args.len() < 2 {
         println!("wasm [mod_name]");
     } else {
-        match module::read_from_path(&args[1]) {
+        match load_module_from_path(&args[1]) {
             Err(_) => println!("Failed to read module from {}", &args[1]),
-            Ok(sections) => {
-                for section in sections {
-                    println!("Got section {:x?}", section);
-                }
+            Ok(module) => {
+                println!("Module {:?}", module);
                 println!("Done");
             }
         }

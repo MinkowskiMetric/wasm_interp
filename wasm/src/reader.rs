@@ -1,3 +1,4 @@
+mod module_reader;
 mod reader_util;
 mod type_reader;
 mod scoped_reader;
