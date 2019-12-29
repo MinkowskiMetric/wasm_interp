@@ -1,54 +1,56 @@
-use std::io;
+use num_enum::TryFromPrimitive;
+use std::convert::TryInto;
+use std::io::{Error, ErrorKind, Result};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, TryFromPrimitive)]
+#[repr(u8)]
 pub enum ValueType {
-    I32,
-    I64,
-    F32,
-    F64,
+    F64 = 0x7C,
+    F32 = 0x7D,
+    I64 = 0x7E,
+    I32 = 0x7F,
 }
 
 impl ValueType {
-    pub fn from_byte(byte: u8) -> io::Result<ValueType> {
-        match byte {
-            0x7F => Ok(ValueType::I32),
-            0x7E => Ok(ValueType::I64),
-            0x7D => Ok(ValueType::F32),
-            0x7C => Ok(ValueType::F64),
-
-            b => Err(io::Error::new(io::ErrorKind::InvalidData, format!("Invalid value type byte 0x{:02x}", b))),
+    pub fn from_byte(byte: u8) -> Result<Self> {
+        // actual values are offset by 0x7C [chrbrn]
+        match byte.try_into() {
+            Ok(v) => Ok(v),
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("Invalid value type byte 0x{:02x}", byte),
+            )),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, TryFromPrimitive)]
+#[repr(u8)]
 pub enum MutableType {
     Const,
     Var,
 }
 
 impl MutableType {
-    pub fn from_byte(byte: u8) -> io::Result<MutableType> {
-        match byte {
-            0x00 => Ok(MutableType::Const),
-            0x01 => Ok(MutableType::Var),
-
-            _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown mutable type")),
+    pub fn from_byte(byte: u8) -> Result<Self> {
+        match byte.try_into() {
+            Ok(b) => Ok(b),
+            _ => Err(Error::new(ErrorKind::InvalidData, "Unknown mutable type")),
         }
     }
 }
 
-#[derive(Debug)]
-pub enum ElemType { 
-    FuncRef
+#[derive(Debug, PartialEq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum ElemType {
+    FuncRef = 0x70,
 }
 
 impl ElemType {
-    pub fn from_byte(byte: u8) -> io::Result<Self> {
-        match byte {
-            0x70 => Ok(ElemType::FuncRef),
-
-            _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown funcref type")),
+    pub fn from_byte(byte: u8) -> Result<Self> {
+        match byte.try_into() {
+            Ok(s) => Ok(s),
+            _ => Err(Error::new(ErrorKind::InvalidData, "Unknown funcref type")),
         }
     }
 }
@@ -102,7 +104,10 @@ pub struct FuncType {
 
 impl FuncType {
     pub fn new(arg_types: Vec<ValueType>, ret_types: Vec<ValueType>) -> FuncType {
-        FuncType { arg_types, ret_types }
+        FuncType {
+            arg_types,
+            ret_types,
+        }
     }
 }
 
@@ -123,7 +128,11 @@ pub struct Import {
 
 impl Import {
     pub fn new(mod_name: String, name: String, import_desc: ImportDesc) -> Self {
-        Self { mod_name, name, import_desc }
+        Self {
+            mod_name,
+            name,
+            import_desc,
+        }
     }
 }
 
