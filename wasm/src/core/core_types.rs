@@ -40,6 +40,7 @@ impl MutableType {
 
 #[derive(Debug, PartialEq)]
 pub enum ElemType { 
+    this doesn't build
     FuncRef
 }
 
