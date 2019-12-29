@@ -38,7 +38,7 @@ impl MutableType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ElemType { 
     FuncRef
 }
