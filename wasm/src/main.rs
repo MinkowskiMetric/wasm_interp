@@ -13,7 +13,10 @@ fn load_module_from_path(file: &str) -> io::Result<core::Module> {
     let file = File::open(file)?;
     let mut file = BufReader::new(file);
 
-    core::Module::read(&mut file)
+    let module = core::RawModule::read(&mut file)?;
+    let module = core::Module::resolve_raw_module(module, core::EmptyResolver::instance())?;
+
+    Ok(module)
 }
 
 fn main() {

@@ -86,7 +86,7 @@ impl TypeReader for core::FuncType {
 impl TypeReader for core::ImportDesc {
     fn read<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         match reader.read_u8()? {
-            0x00 => Ok(Self::TypeIdx(reader.read_leb_u32()?)),
+            0x00 => Ok(Self::TypeIdx(reader.read_leb_usize()?)),
             0x01 => Ok(Self::TableType(core::TableType::read(reader)?)),
             0x02 => Ok(Self::MemType(core::MemType::read(reader)?)),
             0x03 => Ok(Self::GlobalType(core::GlobalType::read(reader)?)),
@@ -112,7 +112,7 @@ impl TypeReader for core::Expr {
     }
 }
 
-impl TypeReader for core::Global {
+impl TypeReader for core::GlobalDef {
     fn read<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let gt = core::GlobalType::read(reader)?;
         let e = core::Expr::read(reader)?;
@@ -124,10 +124,10 @@ impl TypeReader for core::Global {
 impl TypeReader for core::ExportDesc {
     fn read<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         match reader.read_u8()? {
-            0x00 => Ok(core::ExportDesc::Func(reader.read_leb_u32()?)),
-            0x01 => Ok(core::ExportDesc::Table(reader.read_leb_u32()?)),
-            0x02 => Ok(core::ExportDesc::Mem(reader.read_leb_u32()?)),
-            0x03 => Ok(core::ExportDesc::Global(reader.read_leb_u32()?)),
+            0x00 => Ok(core::ExportDesc::Func(reader.read_leb_usize()?)),
+            0x01 => Ok(core::ExportDesc::Table(reader.read_leb_usize()?)),
+            0x02 => Ok(core::ExportDesc::Mem(reader.read_leb_usize()?)),
+            0x03 => Ok(core::ExportDesc::Global(reader.read_leb_usize()?)),
 
             _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid export desc type")),
         }
