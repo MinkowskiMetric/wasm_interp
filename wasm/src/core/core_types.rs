@@ -1,6 +1,6 @@
 use std::io;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ValueType {
     I32,
     I64,
@@ -21,7 +21,7 @@ impl ValueType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MutableType {
     Const,
     Var,
@@ -38,7 +38,7 @@ impl MutableType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ElemType { 
     FuncRef
 }
@@ -53,13 +53,13 @@ impl ElemType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Limits {
     Unbounded(u32),
     Bounded(u32, u32),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TableType {
     et: ElemType,
     lim: Limits,
@@ -71,7 +71,7 @@ impl TableType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemType {
     limits: Limits,
 }
@@ -82,7 +82,7 @@ impl MemType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GlobalType {
     t: ValueType,
     m: MutableType,
@@ -94,7 +94,7 @@ impl GlobalType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FuncType {
     arg_types: Vec<ValueType>,
     ret_types: Vec<ValueType>,
@@ -108,7 +108,7 @@ impl FuncType {
 
 #[derive(Debug)]
 pub enum ImportDesc {
-    TypeIdx(u32),
+    TypeIdx(usize),
     TableType(TableType),
     MemType(MemType),
     GlobalType(GlobalType),
@@ -125,9 +125,21 @@ impl Import {
     pub fn new(mod_name: String, name: String, import_desc: ImportDesc) -> Self {
         Self { mod_name, name, import_desc }
     }
+
+    pub fn mod_name(&self) -> &str {
+        &self.mod_name
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn desc(&self) -> &ImportDesc {
+        &self.import_desc
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Expr {
     // So, a basic expr is just the bytes that make up the expression
     instr: Vec<u8>,
@@ -140,12 +152,12 @@ impl Expr {
 }
 
 #[derive(Debug)]
-pub struct Global {
+pub struct GlobalDef {
     gt: GlobalType,
     e: Expr,
 }
 
-impl Global {
+impl GlobalDef {
     pub fn new(gt: GlobalType, e: Expr) -> Self {
         Self { gt, e }
     }
@@ -153,16 +165,16 @@ impl Global {
 
 #[derive(Debug)]
 pub enum ExportDesc {
-    Func(u32),
-    Table(u32),
-    Mem(u32),
-    Global(u32),
+    Func(usize),
+    Table(usize),
+    Mem(usize),
+    Global(usize),
 }
 
 #[derive(Debug)]
 pub struct Export {
-    nm: String,
-    d: ExportDesc,
+    pub nm: String,
+    pub d: ExportDesc,
 }
 
 impl Export {
@@ -184,7 +196,7 @@ impl Element {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Locals {
     n: u32,
     t: ValueType,
@@ -196,7 +208,7 @@ impl Locals {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Func {
     locals: Vec<Locals>,
     e: Expr,

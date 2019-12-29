@@ -13,11 +13,11 @@ fn append_to_vector<R>(target: &mut Vec<R>, mut extra: Vec<R>) {
 #[derive(Debug)]
 struct ModuleBuilder {
     types: Vec<core::FuncType>,
-    typeidx: Vec<u32>,
+    typeidx: Vec<usize>,
     funcs: Vec<core::Func>,
     tables: Vec<core::TableType>,
     mems: Vec<core::MemType>,
-    globals: Vec<core::Global>,
+    globals: Vec<core::GlobalDef>,
     elem: Vec<core::Element>,
     data: Vec<core::Data>,
     start: Option<u32>,
@@ -46,10 +46,10 @@ impl ModuleBuilder {
         match section_type {
             core::SectionType::TypeSection => Ok(append_to_vector(&mut self.types, reader.read_vec(core::FuncType::read)?)),
             core::SectionType::ImportSection => Ok(append_to_vector(&mut self.imports, reader.read_vec(core::Import::read)?)),
-            core::SectionType::FunctionSection => Ok(append_to_vector(&mut self.typeidx, reader.read_vec(T::read_leb_u32)?)),
+            core::SectionType::FunctionSection => Ok(append_to_vector(&mut self.typeidx, reader.read_vec(T::read_leb_usize)?)),
             core::SectionType::TableSection => Ok(append_to_vector(&mut self.tables, reader.read_vec(core::TableType::read)?)),
             core::SectionType::MemorySection => Ok(append_to_vector(&mut self.mems, reader.read_vec(core::MemType::read)?)),
-            core::SectionType::GlobalSection => Ok(append_to_vector(&mut self.globals, reader.read_vec(core::Global::read)?)),
+            core::SectionType::GlobalSection => Ok(append_to_vector(&mut self.globals, reader.read_vec(core::GlobalDef::read)?)),
             core::SectionType::ExportSection => Ok(append_to_vector(&mut self.exports, reader.read_vec(core::Export::read)?)),
             core::SectionType::StartSection => self.update_start(reader.read_leb_u32()?),
             core::SectionType::ElementSection => Ok(append_to_vector(&mut self.elem, reader.read_vec(core::Element::read)?)),
@@ -78,7 +78,7 @@ impl ModuleBuilder {
         }
     }
 
-    pub fn make_module(self) -> io::Result<core::Module> {
+    pub fn make_module(self) -> io::Result<core::RawModule> {
         if self.typeidx.len() == 0 {
             Err(io::Error::new(io::ErrorKind::InvalidData, "No functions found"))
         } else if self.typeidx.len() != self.funcs.len() {
@@ -86,7 +86,7 @@ impl ModuleBuilder {
         } else {
             // TODOTODOTODO - this will get more complicated - there is more processing to be done here
             // to tie up the functions table
-            Ok(core::Module::new(
+            Ok(core::RawModule::new(
                 self.types,
                 self.typeidx,
                 self.funcs,
@@ -127,7 +127,7 @@ fn read_next_section_header<T: Read>(reader: &mut T) -> io::Result<Option<core::
     }
 }
 
-impl TypeReader for core::Module {
+impl TypeReader for core::RawModule {
     fn read<T: Read>(reader: &mut T) -> io::Result<Self> {
         const HEADER_LENGTH: usize = 8;
         const EXPECTED_HEADER: [u8; 8] = [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];

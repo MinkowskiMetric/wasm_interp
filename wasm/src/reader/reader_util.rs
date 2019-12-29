@@ -4,6 +4,7 @@ use std::io;
 pub trait ReaderUtil {
     fn read_u8(&mut self) -> std::result::Result<u8, std::io::Error>;
     fn read_leb_u32(&mut self) -> std::result::Result<u32, std::io::Error>;
+    fn read_leb_usize(&mut self) -> std::result::Result<usize, std::io::Error>;
     fn read_vec<R, T: Fn(&mut Self) -> std::io::Result<R>>(&mut self, read_fn: T) -> std::io::Result<Vec<R>>;
     fn read_name(&mut self) -> std::io::Result<String>;
     fn read_bytes_to_end(&mut self) -> std::io::Result<Vec<u8>>;
@@ -28,6 +29,10 @@ impl<T> ReaderUtil for T where T: io::Read {
             }
             shift += 7;
         }
+    }
+
+    fn read_leb_usize(&mut self) -> io::Result<usize> {
+        Ok(usize::try_from(self.read_leb_u32()?).unwrap())
     }
 
     fn read_vec<R, T2: Fn(&mut Self) -> std::io::Result<R>>(&mut self, read_fn: T2) -> std::io::Result<Vec<R>> {
