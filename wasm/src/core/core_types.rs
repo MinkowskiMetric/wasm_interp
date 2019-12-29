@@ -13,7 +13,7 @@ pub enum ValueType {
 
 impl ValueType {
     pub fn from_byte(byte: u8) -> Result<Self> {
-        // actual values are offset by 0x7C [chrbrn]
+        // actual values are offset by 0x7C [cb]
         match byte.try_into() {
             Ok(v) => Ok(v),
             _ => Err(Error::new(
