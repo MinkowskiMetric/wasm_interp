@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+  "wasm",
+  "test_app_rs",
+]

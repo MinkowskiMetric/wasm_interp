@@ -1,11 +1,10 @@
-use std::io;
-use std::io::prelude::*;
+use std::io::{Read, Result};
 
-use crate::reader::{ReaderUtil, TypeReader};
 use crate::core;
+use crate::reader::{ReaderUtil, TypeReader};
 
 impl TypeReader for core::SectionType {
-    fn read<T: Read>(reader: &mut T) -> io::Result<Self> {
+    fn read<T: Read>(reader: &mut T) -> Result<Self> {
         Self::from_byte(reader.read_u8()?)
     }
 }
