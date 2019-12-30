@@ -5,6 +5,7 @@ use crate::parser::{self, InstructionAccumulator};
 #[derive(Debug)]
 pub struct Instruction<'a> {
     bytes: &'a [u8],
+    opcode: parser::Opcode,
     cat: parser::InstructionCategory,
     acc: parser::SliceInstructionAccumulator<'a>,
 }
@@ -14,11 +15,12 @@ impl<'a> Instruction<'a> {
         // All instructions are at least one byte long, and we depend heavily on that assumption
         assert!(bytes.len() > 0);
 
-        let cat = parser::InstructionCategory::from_lead_byte(bytes[0]).unwrap();
+        let opcode = parser::Opcode::from_byte(bytes[0]).unwrap();
+        let cat = parser::InstructionCategory::from_opcode(opcode.clone());
         let mut acc = parser::make_slice_accumulator(bytes);
         assert!(cat.ensure_instruction(&mut acc, 0).is_ok());
 
-        Self { bytes, cat, acc }
+        Self { bytes, opcode, cat, acc }
     }
 
     fn lead_byte(&self) -> u8 {
@@ -35,7 +37,7 @@ impl<'a> Instruction<'a> {
             _ => false,
         }
     }
-    
+
     fn is_block_end(&self) -> bool {
         self.cat == parser::InstructionCategory::End
     }
