@@ -236,6 +236,60 @@ impl Module {
         Ok(())
     }
 
+    fn pre_execute_validate(&self) -> io::Result<()> {
+        if self.tables.len() > 1 {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Too many tables",
+            ))
+        } else if self.memories.len() > 1 {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Too many memoryies",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn initialize_table_element(&self, element: core::Element) -> io::Result<()> {
+        if element.table_idx() >= self.tables.len() {
+            Err(io::Error::new(io::ErrorKind::InvalidData, "Table initializer table idx out of range"))
+        } else {
+            let _table = &self.tables[element.table_idx()];
+            let _offset = core::ConstantExpressionExecutor::instance().execute_constant_expression(element.expr(), self)?;
+
+            unimplemented!();
+        }
+    }
+
+    fn initialize_table_elements<Iter: Iterator<Item = core::Element>>(&self, iter: Iter) -> io::Result<()> {
+        for element in iter {
+            self.initialize_table_element(element)?;
+        }
+
+        Ok(())
+    }
+
+    fn initialize_memory_data(&self, data: core::Data) -> io::Result<()> {
+        if data.mem_idx() >= self.memories.len() {
+            Err(io::Error::new(io::ErrorKind::InvalidData, "Memory initializer mem idx out of range"))
+        } else {
+            let _memory = &self.memories[data.mem_idx()];
+            let _offset = core::ConstantExpressionExecutor::instance().execute_constant_expression(data.expr(), self)?;
+
+            unimplemented!();
+        }
+    }
+
+    fn initialize_memory<Iter: Iterator<Item = core::Data>>(&self, iter: Iter) -> io::Result<()> {
+        for data in iter {
+            self.initialize_memory_data(data)?;
+        }
+
+        Ok(())
+    }
+
     pub fn resolve_raw_module<Resolver: core::Resolver>(
         module: RawModule,
         resolver: &Resolver,
@@ -250,6 +304,31 @@ impl Module {
         ret_module.add_memories(module.mems.into_iter())?;
         ret_module.add_globals(module.globals.into_iter())?;
         ret_module.collect_exports(module.exports.into_iter())?;
+
+        // Everything prior to this point is setting up the environment so that we
+        // can start executing things, so make sure that everything is sane once we're
+        // at that point.
+        ret_module.pre_execute_validate()?;
+
+        // The next step is to initialize the tables and memories.
+        ret_module.initialize_table_elements(module.elem.into_iter())?;
+        ret_module.initialize_memory(module.data.into_iter())?;
+
+        // Finally, if there is a start function specified then execute it.
+        // TODOTODOTODO - execute the start function
+
+        println!("{:?}", module.metadata);
+        //println!("{:?}", module.typeidx);
+        //println!("{:?}", module.funcs);
+        //println!("{:?}", module.tables);
+        //println!("{:?}", module.mems);
+        //println!("{:?}", module.globals);
+        //println!("{:?}", module.elem);
+        //println!("{:?}", module.data);
+        println!("{:?}", module.start);
+        //println!("{:?}", module.imports);
+        //println!("{:?}", module.exports);
+        // println!("{:?}", module);
 
         Ok(ret_module)
     }
