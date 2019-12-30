@@ -1,11 +1,12 @@
-use std::env;
-
 mod core;
 mod parser;
 mod reader;
 
-use std::io::{self, BufReader};
-use std::fs::File;
+use std::{
+    env,
+    fs::File,
+    io::{self, BufReader},
+};
 
 use reader::TypeReader;
 
