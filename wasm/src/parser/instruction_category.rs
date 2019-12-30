@@ -1,20 +1,19 @@
+use std::convert::TryFrom;
 use std::io;
 
 use crate::parser::{InstructionAccumulator, Opcode};
 
 #[derive(Debug, PartialEq)]
 pub enum InstructionCategory {
-    SingleByte,
-    SingleLebInteger,
-    SingleFloat,
-    SingleDouble,
-    Block(bool),
-    Else,
-    End,
-    MemSizeGrow,
-    MemInstr,
-    IndirectCall,
-    BranchTable,
+    SingleByte,       // No arguments
+    SingleLebInteger, // Single argument, can be I32 or I64
+    SingleFloat,      // Single argument of type F32
+    SingleDouble,     // Single argument of type F64
+    Block(bool),      // One or two sub expressions
+    Else,             // No arguments
+    End,              // No arguments
+    TwoLebInteger,    // Two I32 arguments
+    BranchTable,      // Vector of I32 arguments containing at least one entry
 }
 
 impl InstructionCategory {
@@ -23,32 +22,51 @@ impl InstructionCategory {
     }
 
     pub fn from_opcode(opcode: Opcode) -> InstructionCategory {
-        match opcode as u8 {
-            0x00..=0x01 => InstructionCategory::SingleByte,
-            0x02..=0x03 => InstructionCategory::Block(false),
-            0x04 => InstructionCategory::Block(true),
-            0x05 => InstructionCategory::Else,
-            //  0x06 ..= 0x0A are not listed in the spec
-            0x0B => InstructionCategory::End,
-            0x0C..=0x0D => InstructionCategory::SingleLebInteger,
-            0x0E => InstructionCategory::BranchTable,
-            0x0F => InstructionCategory::SingleByte,
-            0x10 => InstructionCategory::SingleLebInteger,
-            0x11 => InstructionCategory::IndirectCall,
-            //  0x12 ..= 0x19 are not listed in the spec
-            0x1a..=0x1b => InstructionCategory::SingleByte,
-            //  0x1c ..= 0x1f are not listed in the spec
-            0x20..=0x24 => InstructionCategory::SingleLebInteger,
-            //  0x25 ..= 0x27 are not listed in the spec
-            0x28..=0x3E => InstructionCategory::MemInstr,
-            0x3F..=0x40 => InstructionCategory::MemSizeGrow,
-            0x41..=0x42 => InstructionCategory::SingleLebInteger,
-            0x43 => InstructionCategory::SingleFloat,
-            0x44 => InstructionCategory::SingleDouble,
-            0x45..=0xBF => InstructionCategory::SingleByte,
-            //  0xC0 ..= 0xFF are not listed in the spec
+        match opcode {
+            // Most of the instructions are single byte instructions, so only the special
+            // cases are listed here
+            Opcode::Block | Opcode::Loop => InstructionCategory::Block(false),
+            Opcode::If => InstructionCategory::Block(true),
+            Opcode::Else => InstructionCategory::Else,
+            Opcode::End => InstructionCategory::End,
+            Opcode::Br | Opcode::BrIf => InstructionCategory::SingleLebInteger,
+            Opcode::BrTable => InstructionCategory::BranchTable,
+            Opcode::Call => InstructionCategory::SingleLebInteger,
+            Opcode::CallIndirect => InstructionCategory::TwoLebInteger,
+            Opcode::LocalGet
+            | Opcode::LocalSet
+            | Opcode::LocalTee
+            | Opcode::GlobalGet
+            | Opcode::GlobalSet => InstructionCategory::SingleLebInteger,
+            Opcode::I32Load
+            | Opcode::I64Load
+            | Opcode::F32Load
+            | Opcode::F64Load
+            | Opcode::I32Load8S
+            | Opcode::I32Load8U
+            | Opcode::I32Load16S
+            | Opcode::I32Load16U
+            | Opcode::I64Load8S
+            | Opcode::I64Load8U
+            | Opcode::I64Load16S
+            | Opcode::I64Load16U
+            | Opcode::I64Load32S
+            | Opcode::I64Load32U
+            | Opcode::I32Store
+            | Opcode::I64Store
+            | Opcode::F32Store
+            | Opcode::F64Store
+            | Opcode::I32Store8
+            | Opcode::I32Store16
+            | Opcode::I64Store8
+            | Opcode::I64Store16
+            | Opcode::I64Store32 => InstructionCategory::TwoLebInteger,
+            Opcode::MemorySize | Opcode::MemoryGrow => InstructionCategory::SingleLebInteger,
+            Opcode::I32Const | Opcode::I64Const => InstructionCategory::SingleLebInteger,
+            Opcode::F32Const => InstructionCategory::SingleFloat,
+            Opcode::F64Const => InstructionCategory::SingleDouble,
 
-            _ => unimplemented!(),          // This is only needed because we go through an int.
+            _ => InstructionCategory::SingleByte,
         }
     }
 
@@ -69,14 +87,12 @@ impl InstructionCategory {
             InstructionCategory::Block(allow_else) => {
                 self.ensure_block_instruction(*allow_else, acc, offset)
             }
-            InstructionCategory::MemSizeGrow => self.ensure_mem_size_grow(acc, offset),
-            InstructionCategory::MemInstr => self.ensure_mem_instr(acc, offset),
-            InstructionCategory::IndirectCall => self.ensure_indirect_call(acc, offset),
+            InstructionCategory::TwoLebInteger => self.ensure_two_leb_integer(acc, offset),
             InstructionCategory::BranchTable => self.ensure_branch_table(acc, offset),
         }
     }
 
-    fn ensure_mem_instr<T: InstructionAccumulator>(
+    fn ensure_two_leb_integer<T: InstructionAccumulator>(
         &self,
         acc: &mut T,
         offset: usize,
@@ -85,41 +101,6 @@ impl InstructionCategory {
         let offset_size = acc.ensure_leb_at(offset + 1 + align_size)?;
 
         Ok(1 + align_size + offset_size)
-    }
-
-    fn ensure_mem_size_grow<T: InstructionAccumulator>(
-        &self,
-        acc: &mut T,
-        offset: usize,
-    ) -> io::Result<usize> {
-        let mem_idx_size = acc.ensure_leb_at(offset + 1)?;
-
-        if acc.get_leb_u32_at(offset + 1) != 0x00 {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Invalid memory value in mem grow or shrink call",
-            ))
-        } else {
-            Ok(1 + mem_idx_size)
-        }
-    }
-
-    fn ensure_indirect_call<T: InstructionAccumulator>(
-        &self,
-        acc: &mut T,
-        offset: usize,
-    ) -> io::Result<usize> {
-        let arg_size = acc.ensure_leb_at(offset + 1)?;
-        let mem_size = acc.ensure_leb_at(offset + 1 + arg_size)?;
-
-        if acc.get_leb_u32_at(offset + 1 + arg_size) != 0x00 {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Invalid memory value in indirect call - should be 0x00",
-            ))
-        } else {
-            Ok(1 + arg_size + mem_size)
-        }
     }
 
     fn ensure_block_instruction<T: InstructionAccumulator>(
@@ -189,5 +170,37 @@ impl InstructionCategory {
         instr_size += acc.ensure_leb_at(offset + instr_size)?;
 
         Ok(instr_size)
+    }
+
+    pub fn get_single_u32_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> u32 {
+        match self {
+            InstructionCategory::SingleLebInteger => acc.get_leb_u32_at(offset + 1),
+            _ => panic!("Not valid for instruction type"),
+        }
+    }
+
+    pub fn get_single_usize_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> usize {
+        usize::try_from(self.get_single_u32_arg(acc, offset)).unwrap()
+    }
+
+    pub fn get_single_u64_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> u64 {
+        match self {
+            InstructionCategory::SingleLebInteger => acc.get_leb_u64_at(offset + 1),
+            _ => panic!("Not valid for instruction type"),
+        }
+    }
+
+    pub fn get_single_f32_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> f32 {
+        match self {
+            InstructionCategory::SingleLebInteger => acc.get_f32_at(offset + 1),
+            _ => panic!("Not valid for instruction type"),
+        }
+    }
+
+    pub fn get_single_f64_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> f64 {
+        match self {
+            InstructionCategory::SingleLebInteger => acc.get_f64_at(offset + 1),
+            _ => panic!("Not valid for instruction type"),
+        }
     }
 }

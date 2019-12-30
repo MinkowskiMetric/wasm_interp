@@ -60,13 +60,13 @@ where
         Ok(())
     }
 
-    fn get_byte(&self, idx: usize) -> u8 {
+    fn get_bytes(&self, idx: usize, length: usize) -> &[u8] {
         assert!(
-            self.buf.len() > self.next_inst + idx,
+            self.buf.len() >= self.next_inst + idx + length,
             "Byte is not available"
         );
 
-        self.buf[self.next_inst + idx]
+        &self.buf[self.next_inst + idx..self.next_inst + idx + length]
     }
 }
 

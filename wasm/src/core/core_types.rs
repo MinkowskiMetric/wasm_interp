@@ -204,16 +204,20 @@ impl Export {
 pub struct Element {
     x: usize,
     e: Expr,
-    y: Vec<u32>,
+    y: Vec<usize>,
 }
 
 impl Element {
-    pub fn new(x: usize, e: Expr, y: Vec<u32>) -> Self {
+    pub fn new(x: usize, e: Expr, y: Vec<usize>) -> Self {
         Self { x, e, y }
     }
 
     pub fn table_idx(&self) -> usize {
         self.x
+    }
+
+    pub fn func_indices(&self) -> &[usize] {
+        &self.y
     }
 
     pub fn expr(&self) -> &Expr {
@@ -256,11 +260,16 @@ impl Data {
     pub fn new(x: usize, e: Expr, b: Vec<u8>) -> Self {
         Self { x, e, b }
     }
+
     pub fn mem_idx(&self) -> usize {
         self.x
     }
 
     pub fn expr(&self) -> &Expr {
         &self.e
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.b
     }
 }

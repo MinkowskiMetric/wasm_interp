@@ -1,4 +1,4 @@
-use crate::core;
+use crate::core::{Func, FuncType};
 
 #[derive(Debug)]
 pub struct WasmExprCallable {}
@@ -12,16 +12,14 @@ pub enum Callable {
     DummyCallable(DummyCallable), // This is temporary
 }
 
-pub type RcCallable = std::rc::Rc<Callable>;
-
 impl WasmExprCallable {
-    pub fn new(_func_type: core::FuncType, _func: core::Func) -> Callable {
+    pub fn new(_func_type: FuncType, _func: Func) -> Callable {
         Callable::WasmExpr(Self {})
     }
 }
 
 impl DummyCallable {
-    pub fn new(_mod_name: &str, _name: &str, _func_type: &core::FuncType) -> Callable {
+    pub fn new(_mod_name: &str, _name: &str, _func_type: &FuncType) -> Callable {
         Callable::DummyCallable(Self {})
     }
 }

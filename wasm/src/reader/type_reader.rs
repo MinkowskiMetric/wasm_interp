@@ -162,7 +162,7 @@ impl TypeReader for core::Element {
     fn read<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let x = reader.read_leb_usize()?;
         let e = core::Expr::read(reader)?;
-        let y = reader.read_vec(T::read_leb_u32)?;
+        let y = reader.read_vec(T::read_leb_usize)?;
 
         Ok(Self::new(x, e, y))
     }
