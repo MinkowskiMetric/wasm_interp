@@ -1,16 +1,14 @@
-use crate::core;
+use crate::core::{GlobalDef, GlobalType};
 
 #[derive(Debug)]
 pub struct Global {}
 
 impl Global {
-    pub fn new(_global_def: core::GlobalDef) -> Self {
+    pub fn new(_global_def: GlobalDef) -> Self {
         Global {}
     }
 
-    pub fn new_dummy(_global_type: core::GlobalType) -> Self {
+    pub fn new_dummy(_global_type: GlobalType) -> Self {
         Global {}
     }
 }
-
-pub type RcGlobal = std::rc::Rc<Global>;

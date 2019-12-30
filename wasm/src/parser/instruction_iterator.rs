@@ -34,6 +34,11 @@ impl<'a> Instruction<'a> {
     }
 
     #[allow(dead_code)]
+    pub fn opcode(&self) -> parser::Opcode {
+        self.opcode.clone()
+    }
+
+    #[allow(dead_code)]
     fn category(&self) -> &parser::InstructionCategory {
         &self.cat
     }
@@ -48,6 +53,26 @@ impl<'a> Instruction<'a> {
 
     fn is_block_end(&self) -> bool {
         self.cat == parser::InstructionCategory::End
+    }
+
+    pub fn get_single_u32_arg(&self) -> u32 {
+        self.cat.get_single_u32_arg(&self.acc, 0)
+    }
+
+    pub fn get_single_u64_arg(&self) -> u64 {
+        self.cat.get_single_u64_arg(&self.acc, 0)
+    }
+
+    pub fn get_single_usize_arg(&self) -> usize {
+        self.cat.get_single_usize_arg(&self.acc, 0)
+    }
+
+    pub fn get_single_f32_arg(&self) -> f32 {
+        self.cat.get_single_f32_arg(&self.acc, 0)
+    }
+
+    pub fn get_single_f64_arg(&self) -> f64 {
+        self.cat.get_single_f64_arg(&self.acc, 0)
     }
 }
 
@@ -132,9 +157,13 @@ impl<'a, Source: InstructionSource> parser::InstructionAccumulator
         }
     }
 
-    fn get_byte(&self, offset: usize) -> u8 {
-        assert!((self.current_instr_start + offset) < self.source.get_instruction_bytes().len());
-        self.source.get_instruction_bytes()[self.current_instr_start + offset]
+    fn get_bytes(&self, offset: usize, length: usize) -> &[u8] {
+        assert!(
+            (self.current_instr_start + offset + length)
+                <= self.source.get_instruction_bytes().len()
+        );
+        &self.source.get_instruction_bytes()
+            [self.current_instr_start + offset..self.current_instr_start + offset + length]
     }
 }
 

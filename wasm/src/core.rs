@@ -8,12 +8,12 @@ mod resolver;
 mod section;
 mod table;
 
-pub use callable::{Callable, DummyCallable, RcCallable, WasmExprCallable};
+pub use callable::{Callable, DummyCallable, WasmExprCallable};
 pub use core_types::*;
-pub use executor::{ConstantExpressionExecutor};
-pub use global::{Global, RcGlobal};
-pub use memory::{Memory, RcMemory};
+pub use executor::ConstantExpressionExecutor;
+pub use global::Global;
+pub use memory::Memory;
 pub use module::{Module, RawModule};
 pub use resolver::{EmptyResolver, Resolver};
 pub use section::SectionType;
-pub use table::{RcTable, Table};
+pub use table::Table;

@@ -1,7 +1,10 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::io;
+use std::rc::Rc;
 
-use crate::core;
+use crate::core::{self, Callable, Global, Memory, Table};
 
 #[derive(Debug)]
 struct RawModuleMetadata {
@@ -55,18 +58,18 @@ impl RawModule {
 
 #[derive(Debug)]
 pub enum ExportValue {
-    Function(core::RcCallable),
-    Table(core::RcTable),
-    Memory(core::RcMemory),
-    Global(core::RcGlobal),
+    Function(Rc<RefCell<Callable>>),
+    Table(Rc<RefCell<Table>>),
+    Memory(Rc<RefCell<Memory>>),
+    Global(Rc<RefCell<Global>>),
 }
 
 #[derive(Debug)]
 pub struct Module {
-    pub functions: Vec<core::RcCallable>,
-    pub tables: Vec<core::RcTable>,
-    pub memories: Vec<core::RcMemory>,
-    pub globals: Vec<core::RcGlobal>,
+    pub functions: Vec<Rc<RefCell<Callable>>>,
+    pub tables: Vec<Rc<RefCell<Table>>>,
+    pub memories: Vec<Rc<RefCell<Memory>>>,
+    pub globals: Vec<Rc<RefCell<Global>>>,
     pub exports: HashMap<String, ExportValue>,
 }
 
@@ -143,10 +146,10 @@ impl Module {
             }
 
             self.functions
-                .push(std::rc::Rc::new(core::WasmExprCallable::new(
+                .push(Rc::new(RefCell::new(core::WasmExprCallable::new(
                     metadata.types[type_idx].clone(),
                     func.clone(),
-                )));
+                ))));
         }
         Ok(())
     }
@@ -156,7 +159,7 @@ impl Module {
         tables: Iter,
     ) -> io::Result<()> {
         for table in tables {
-            self.tables.push(std::rc::Rc::new(core::Table::new(table)));
+            self.tables.push(Rc::new(RefCell::new(Table::new(table))));
         }
 
         Ok(())
@@ -168,7 +171,7 @@ impl Module {
     ) -> io::Result<()> {
         for memory in memories {
             self.memories
-                .push(std::rc::Rc::new(core::Memory::new(memory)));
+                .push(Rc::new(RefCell::new(Memory::new(memory))));
         }
 
         Ok(())
@@ -180,7 +183,7 @@ impl Module {
     ) -> io::Result<()> {
         for global in globals {
             self.globals
-                .push(std::rc::Rc::new(core::Global::new(global)));
+                .push(Rc::new(RefCell::new(Global::new(global))));
         }
 
         Ok(())
@@ -259,11 +262,32 @@ impl Module {
                 "Table initializer table idx out of range",
             ))
         } else {
-            let _table = &self.tables[element.table_idx()];
-            let _offset = core::ConstantExpressionExecutor::instance()
-                .execute_constant_expression(element.expr(), self)?;
+            let table = &self.tables[element.table_idx()];
+            let offset = usize::try_from(
+                core::ConstantExpressionExecutor::instance()
+                    .execute_constant_expression(element.expr(), self)?,
+            )
+            .unwrap();
 
-            unimplemented!();
+            let functions = element.func_indices();
+            let functions: io::Result<Vec<_>> = functions
+                .into_iter()
+                .map(|idx| {
+                    if *idx < self.functions.len() {
+                        Ok(self.functions[*idx].clone())
+                    } else {
+                        Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "Function index out of range",
+                        ))
+                    }
+                })
+                .collect();
+            let functions = functions?;
+
+            table.borrow_mut().set_entries(offset, &functions);
+
+            Ok(())
         }
     }
 
@@ -285,11 +309,18 @@ impl Module {
                 "Memory initializer mem idx out of range",
             ))
         } else {
-            let _memory = &self.memories[data.mem_idx()];
-            let _offset = core::ConstantExpressionExecutor::instance()
-                .execute_constant_expression(data.expr(), self)?;
+            let memory = &self.memories[data.mem_idx()];
+            let offset = usize::try_from(
+                core::ConstantExpressionExecutor::instance()
+                    .execute_constant_expression(data.expr(), self)?,
+            )
+            .unwrap();
 
-            unimplemented!();
+            let data = data.bytes();
+
+            memory.borrow_mut().set_data(offset, data);
+
+            Ok(())
         }
     }
 
