@@ -33,3 +33,27 @@ pub trait InstructionAccumulator {
         }
     }
 }
+
+#[derive(Debug)]
+pub struct SliceInstructionAccumulator<'a> {
+    slice: &'a [u8],
+}
+
+impl<'a> InstructionAccumulator for SliceInstructionAccumulator<'a> {
+    fn ensure_bytes(&mut self, bytes: usize) -> io::Result<()> {
+        if bytes > self.slice.len() {
+            Err(io::Error::new(io::ErrorKind::InvalidData, "Not enough instruction bytes in expression"))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn get_byte(&self, offset: usize) -> u8 {
+        assert!(offset < self.slice.len());
+        self.slice[offset]
+    }
+}
+
+pub fn make_slice_accumulator<'a>(slice: &'a [u8]) -> SliceInstructionAccumulator<'a> {
+    SliceInstructionAccumulator { slice }
+}

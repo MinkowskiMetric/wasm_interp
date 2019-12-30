@@ -1,17 +1,15 @@
 use crate::core;
 
 #[derive(Debug)]
-pub struct Global {
-
-}
+pub struct Global {}
 
 impl Global {
     pub fn new(_global_def: core::GlobalDef) -> Self {
-        Global { }
+        Global {}
     }
 
     pub fn new_dummy(_global_type: core::GlobalType) -> Self {
-        Global { }
+        Global {}
     }
 }
 

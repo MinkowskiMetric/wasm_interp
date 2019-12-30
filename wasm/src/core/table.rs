@@ -1,13 +1,11 @@
 use crate::core;
 
 #[derive(Debug)]
-pub struct Table {
-
-}
+pub struct Table {}
 
 impl Table {
     pub fn new(_table_type: core::TableType) -> Self {
-        Table { }
+        Table {}
     }
 }
 

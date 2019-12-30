@@ -7,9 +7,16 @@ pub struct ScopedReader<'a, I: io::Read> {
     size: usize,
 }
 
-impl<'a, I> ScopedReader<'a, I> where I: Read {
+impl<'a, I> ScopedReader<'a, I>
+where
+    I: Read,
+{
     pub fn new(src: &'a mut I, size: usize) -> Self {
-        Self { src, offset: 0, size }
+        Self {
+            src,
+            offset: 0,
+            size,
+        }
     }
 
     pub fn is_at_end(&self) -> bool {
@@ -17,7 +24,10 @@ impl<'a, I> ScopedReader<'a, I> where I: Read {
     }
 }
 
-impl<'a, I> Read for ScopedReader<'a, I> where I: Read {
+impl<'a, I> Read for ScopedReader<'a, I>
+where
+    I: Read,
+{
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // We need to limit the size of the read
         let bytes_to_read = if buf.len() > (self.size - self.offset) {

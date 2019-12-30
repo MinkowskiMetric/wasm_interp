@@ -4,10 +4,13 @@ use std::io::prelude::*;
 use std::convert::TryFrom;
 
 use crate::core;
-use crate::reader::{ScopedReader, ReaderUtil};
 use crate::parser;
+use crate::reader::{ReaderUtil, ScopedReader};
 
-pub trait TypeReader where Self: std::marker::Sized {
+pub trait TypeReader
+where
+    Self: std::marker::Sized,
+{
     fn read<T: Read>(reader: &mut T) -> io::Result<Self>;
 }
 
@@ -36,11 +39,14 @@ impl TypeReader for core::Limits {
             0x01 => {
                 let min = reader.read_leb_u32()?;
                 let max = reader.read_leb_u32()?;
-                
-                Ok(core::Limits::Bounded(min, max))
-            },
 
-            _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown Limits tag")),
+                Ok(core::Limits::Bounded(min, max))
+            }
+
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Unknown Limits tag",
+            )),
         }
     }
 }
@@ -73,7 +79,10 @@ impl TypeReader for core::FuncType {
     fn read<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let header = reader.read_u8()?;
         if header != 0x60 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid func type header"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid func type header",
+            ));
         }
 
         let arg_types = reader.read_vec(core::ValueType::read)?;
@@ -91,7 +100,10 @@ impl TypeReader for core::ImportDesc {
             0x02 => Ok(Self::MemType(core::MemType::read(reader)?)),
             0x03 => Ok(Self::GlobalType(core::GlobalType::read(reader)?)),
 
-            _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown ImportDesc tag")),
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Unknown ImportDesc tag",
+            )),
         }
     }
 }
@@ -129,7 +141,10 @@ impl TypeReader for core::ExportDesc {
             0x02 => Ok(core::ExportDesc::Mem(reader.read_leb_usize()?)),
             0x03 => Ok(core::ExportDesc::Global(reader.read_leb_usize()?)),
 
-            _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid export desc type")),
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid export desc type",
+            )),
         }
     }
 }
@@ -145,7 +160,7 @@ impl TypeReader for core::Export {
 
 impl TypeReader for core::Element {
     fn read<T: io::Read>(reader: &mut T) -> io::Result<Self> {
-        let x = reader.read_leb_u32()?;
+        let x = reader.read_leb_usize()?;
         let e = core::Expr::read(reader)?;
         let y = reader.read_vec(T::read_leb_u32)?;
 
@@ -171,7 +186,7 @@ impl TypeReader for core::Func {
 
         let locals = payload_reader.read_vec(core::Locals::read)?;
         let e = core::Expr::read(&mut payload_reader)?;
-        
+
         assert!(payload_reader.is_at_end());
 
         Ok(Self::new(locals, e))
@@ -180,7 +195,7 @@ impl TypeReader for core::Func {
 
 impl TypeReader for core::Data {
     fn read<T: io::Read>(reader: &mut T) -> io::Result<Self> {
-        let x = reader.read_leb_u32()?;
+        let x = reader.read_leb_usize()?;
         let e = core::Expr::read(reader)?;
         let b = reader.read_vec(T::read_u8)?;
 

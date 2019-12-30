@@ -2,6 +2,8 @@ use num_enum::TryFromPrimitive;
 use std::convert::TryInto;
 use std::io::{Error, ErrorKind, Result};
 
+use crate::parser::InstructionSource;
+
 #[derive(Debug, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 pub enum ValueType {
@@ -160,6 +162,12 @@ impl Expr {
     }
 }
 
+impl InstructionSource for Expr {
+    fn get_instruction_bytes(&self) -> &[u8] {
+        &self.instr
+    }
+}
+
 #[derive(Debug)]
 pub struct GlobalDef {
     gt: GlobalType,
@@ -194,14 +202,22 @@ impl Export {
 
 #[derive(Debug)]
 pub struct Element {
-    x: u32,
+    x: usize,
     e: Expr,
     y: Vec<u32>,
 }
 
 impl Element {
-    pub fn new(x: u32, e: Expr, y: Vec<u32>) -> Self {
+    pub fn new(x: usize, e: Expr, y: Vec<u32>) -> Self {
         Self { x, e, y }
+    }
+
+    pub fn table_idx(&self) -> usize {
+        self.x
+    }
+
+    pub fn expr(&self) -> &Expr {
+        &self.e
     }
 }
 
@@ -231,13 +247,21 @@ impl Func {
 
 #[derive(Debug)]
 pub struct Data {
-    x: u32,
+    x: usize,
     e: Expr,
     b: Vec<u8>,
 }
 
 impl Data {
-    pub fn new(x: u32, e: Expr, b: Vec<u8>) -> Self {
+    pub fn new(x: usize, e: Expr, b: Vec<u8>) -> Self {
         Self { x, e, b }
+    }
+
+    pub fn mem_idx(&self) -> usize {
+        self.x
+    }
+
+    pub fn expr(&self) -> &Expr {
+        &self.e
     }
 }

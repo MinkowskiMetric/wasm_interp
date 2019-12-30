@@ -5,12 +5,18 @@ pub trait ReaderUtil {
     fn read_u8(&mut self) -> std::result::Result<u8, std::io::Error>;
     fn read_leb_u32(&mut self) -> std::result::Result<u32, std::io::Error>;
     fn read_leb_usize(&mut self) -> std::result::Result<usize, std::io::Error>;
-    fn read_vec<R, T: Fn(&mut Self) -> std::io::Result<R>>(&mut self, read_fn: T) -> std::io::Result<Vec<R>>;
+    fn read_vec<R, T: Fn(&mut Self) -> std::io::Result<R>>(
+        &mut self,
+        read_fn: T,
+    ) -> std::io::Result<Vec<R>>;
     fn read_name(&mut self) -> std::io::Result<String>;
     fn read_bytes_to_end(&mut self) -> std::io::Result<Vec<u8>>;
 }
 
-impl<T> ReaderUtil for T where T: io::Read {
+impl<T> ReaderUtil for T
+where
+    T: io::Read,
+{
     fn read_u8(&mut self) -> std::result::Result<u8, std::io::Error> {
         let mut buf: [u8; 1] = [0; 1];
         self.read_exact(&mut buf)?;
@@ -35,7 +41,10 @@ impl<T> ReaderUtil for T where T: io::Read {
         Ok(usize::try_from(self.read_leb_u32()?).unwrap())
     }
 
-    fn read_vec<R, T2: Fn(&mut Self) -> std::io::Result<R>>(&mut self, read_fn: T2) -> std::io::Result<Vec<R>> {
+    fn read_vec<R, T2: Fn(&mut Self) -> std::io::Result<R>>(
+        &mut self,
+        read_fn: T2,
+    ) -> std::io::Result<Vec<R>> {
         let vector_length = self.read_leb_u32()?;
         let mut ret = Vec::with_capacity(usize::try_from(vector_length).unwrap());
 
@@ -51,7 +60,10 @@ impl<T> ReaderUtil for T where T: io::Read {
 
         match String::from_utf8(bytes) {
             Ok(s) => Ok(s),
-            Err(_) => Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF8 in name")),
+            Err(_) => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid UTF8 in name",
+            )),
         }
     }
 

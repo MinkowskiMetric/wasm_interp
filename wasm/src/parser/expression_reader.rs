@@ -4,12 +4,15 @@ use std::io::prelude::*;
 use crate::parser::{InstructionAccumulator, InstructionCategory};
 
 struct ReaderInstructionAccumulator<'a, T: Read> {
-    reader: &'a mut T,              // Where we get the instructions from
-    buf: Vec<u8>,                   // We accumulate the instructions in here
-    next_inst: usize,               // The position of the next instruction byte in the buffer
+    reader: &'a mut T, // Where we get the instructions from
+    buf: Vec<u8>,      // We accumulate the instructions in here
+    next_inst: usize,  // The position of the next instruction byte in the buffer
 }
 
-impl<'a, T> ReaderInstructionAccumulator<'a, T> where T: Read {
+impl<'a, T> ReaderInstructionAccumulator<'a, T>
+where
+    T: Read,
+{
     pub fn new(reader: &'a mut T) -> Self {
         Self {
             reader: reader,
@@ -37,7 +40,10 @@ impl<'a, T> ReaderInstructionAccumulator<'a, T> where T: Read {
     }
 }
 
-impl<'a, T> InstructionAccumulator for ReaderInstructionAccumulator<'a, T> where T: io::Read {
+impl<'a, T> InstructionAccumulator for ReaderInstructionAccumulator<'a, T>
+where
+    T: io::Read,
+{
     fn ensure_bytes(&mut self, bytes: usize) -> io::Result<()> {
         let required_bytes = self.next_inst + bytes;
         const BUF_SIZE: usize = 16;
@@ -55,7 +61,10 @@ impl<'a, T> InstructionAccumulator for ReaderInstructionAccumulator<'a, T> where
     }
 
     fn get_byte(&self, idx: usize) -> u8 {
-        assert!(self.buf.len() > self.next_inst + idx, "Byte is not available");
+        assert!(
+            self.buf.len() > self.next_inst + idx,
+            "Byte is not available"
+        );
 
         self.buf[self.next_inst + idx]
     }
@@ -63,7 +72,7 @@ impl<'a, T> InstructionAccumulator for ReaderInstructionAccumulator<'a, T> where
 
 pub fn read_expression_bytes<T: Read>(reader: &mut T) -> io::Result<Vec<u8>> {
     let mut acc = ReaderInstructionAccumulator::new(reader);
-    
+
     while acc.move_to_next()? {
         // Nothing in here - we're just accumulating the instructions
     }
