@@ -256,7 +256,6 @@ impl Data {
     pub fn new(x: usize, e: Expr, b: Vec<u8>) -> Self {
         Self { x, e, b }
     }
-
     pub fn mem_idx(&self) -> usize {
         self.x
     }
