@@ -35,3 +35,17 @@ fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_load_module() -> std::result::Result<(), String> {
+        if let Ok(m) = load_module_from_path("../test_app/test.wasm") {
+            assert_eq!(m.exports.len(), 1);
+            assert!(m.exports.contains_key("fib"));
+        }
+        Ok(())
+    }
+}

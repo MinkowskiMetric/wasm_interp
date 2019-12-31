@@ -54,7 +54,7 @@ impl RawModule {
 }
 
 #[derive(Debug)]
-enum ExportValue {
+pub enum ExportValue {
     Function(core::RcCallable),
     Table(core::RcTable),
     Memory(core::RcMemory),
@@ -63,11 +63,11 @@ enum ExportValue {
 
 #[derive(Debug)]
 pub struct Module {
-    functions: Vec<core::RcCallable>,
-    tables: Vec<core::RcTable>,
-    memories: Vec<core::RcMemory>,
-    globals: Vec<core::RcGlobal>,
-    exports: HashMap<String, ExportValue>,
+    pub functions: Vec<core::RcCallable>,
+    pub tables: Vec<core::RcTable>,
+    pub memories: Vec<core::RcMemory>,
+    pub globals: Vec<core::RcGlobal>,
+    pub exports: HashMap<String, ExportValue>,
 }
 
 impl Module {
