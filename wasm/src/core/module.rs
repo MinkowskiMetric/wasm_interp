@@ -254,16 +254,23 @@ impl Module {
 
     fn initialize_table_element(&self, element: core::Element) -> io::Result<()> {
         if element.table_idx() >= self.tables.len() {
-            Err(io::Error::new(io::ErrorKind::InvalidData, "Table initializer table idx out of range"))
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Table initializer table idx out of range",
+            ))
         } else {
             let _table = &self.tables[element.table_idx()];
-            let _offset = core::ConstantExpressionExecutor::instance().execute_constant_expression(element.expr(), self)?;
+            let _offset = core::ConstantExpressionExecutor::instance()
+                .execute_constant_expression(element.expr(), self)?;
 
             unimplemented!();
         }
     }
 
-    fn initialize_table_elements<Iter: Iterator<Item = core::Element>>(&self, iter: Iter) -> io::Result<()> {
+    fn initialize_table_elements<Iter: Iterator<Item = core::Element>>(
+        &self,
+        iter: Iter,
+    ) -> io::Result<()> {
         for element in iter {
             self.initialize_table_element(element)?;
         }
@@ -273,10 +280,14 @@ impl Module {
 
     fn initialize_memory_data(&self, data: core::Data) -> io::Result<()> {
         if data.mem_idx() >= self.memories.len() {
-            Err(io::Error::new(io::ErrorKind::InvalidData, "Memory initializer mem idx out of range"))
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Memory initializer mem idx out of range",
+            ))
         } else {
             let _memory = &self.memories[data.mem_idx()];
-            let _offset = core::ConstantExpressionExecutor::instance().execute_constant_expression(data.expr(), self)?;
+            let _offset = core::ConstantExpressionExecutor::instance()
+                .execute_constant_expression(data.expr(), self)?;
 
             unimplemented!();
         }
