@@ -20,17 +20,25 @@ impl<'a> Instruction<'a> {
         let mut acc = parser::make_slice_accumulator(bytes);
         assert!(cat.ensure_instruction(&mut acc, 0).is_ok());
 
-        Self { bytes, opcode, cat, acc }
+        Self {
+            bytes,
+            opcode,
+            cat,
+            acc,
+        }
     }
 
+    #[allow(dead_code)]
     fn lead_byte(&self) -> u8 {
         self.bytes[0]
     }
 
+    #[allow(dead_code)]
     fn category(&self) -> &parser::InstructionCategory {
         &self.cat
     }
 
+    #[allow(dead_code)]
     fn is_block_start(&self) -> bool {
         match self.cat {
             parser::InstructionCategory::Block(_) => true,
@@ -51,7 +59,11 @@ pub struct InstructionIterator<'a, Source: InstructionSource> {
 
 impl<'a, Source: InstructionSource> InstructionIterator<'a, Source> {
     pub fn new(source: &'a Source) -> Self {
-        Self { source, current_instr_start: 0, current_instr_end: 0 }
+        Self {
+            source,
+            current_instr_start: 0,
+            current_instr_end: 0,
+        }
     }
 
     fn next_internal(&mut self) -> io::Result<Instruction<'a>> {
@@ -68,7 +80,9 @@ impl<'a, Source: InstructionSource> InstructionIterator<'a, Source> {
 
         self.current_instr_end += instr_length;
 
-        Ok(Instruction::new(&self.source.get_instruction_bytes()[self.current_instr_start..self.current_instr_end]))
+        Ok(Instruction::new(
+            &self.source.get_instruction_bytes()[self.current_instr_start..self.current_instr_end],
+        ))
     }
 }
 
@@ -82,12 +96,14 @@ impl<'a, Source: InstructionSource> Iterator for InstructionIterator<'a, Source>
                     if instr.is_block_end() {
                         // This is the "end" instruction - we don't return this, but we check that it should
                         // be at the end of the expression
-                        assert!(self.current_instr_end == self.source.get_instruction_bytes().len());
+                        assert!(
+                            self.current_instr_end == self.source.get_instruction_bytes().len()
+                        );
                         None
                     } else {
                         Some(Ok(instr))
                     }
-                },
+                }
                 other => Some(other),
             }
         } else {
@@ -102,10 +118,15 @@ impl<'a, Source: InstructionSource> InstructionSource for InstructionIterator<'a
     }
 }
 
-impl<'a, Source: InstructionSource> parser::InstructionAccumulator for InstructionIterator<'a, Source> {
+impl<'a, Source: InstructionSource> parser::InstructionAccumulator
+    for InstructionIterator<'a, Source>
+{
     fn ensure_bytes(&mut self, bytes: usize) -> io::Result<()> {
         if (self.current_instr_start + bytes) > self.source.get_instruction_bytes().len() {
-            Err(io::Error::new(io::ErrorKind::InvalidData, "Not enough instruction bytes in expression"))
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Not enough instruction bytes in expression",
+            ))
         } else {
             Ok(())
         }
@@ -120,7 +141,10 @@ impl<'a, Source: InstructionSource> parser::InstructionAccumulator for Instructi
 pub trait InstructionSource {
     fn get_instruction_bytes(&self) -> &[u8];
 
-    fn iter<'a>(&'a self) -> InstructionIterator<'a, Self> where Self: Sized {
+    fn iter<'a>(&'a self) -> InstructionIterator<'a, Self>
+    where
+        Self: Sized,
+    {
         InstructionIterator::new(&self)
     }
 }
