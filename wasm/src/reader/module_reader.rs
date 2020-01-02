@@ -1,17 +1,15 @@
 use std::io;
 use std::io::prelude::*;
 
-use std::convert::TryFrom;
-
 use crate::core;
-use crate::reader::{ReaderUtil, ScopedReader, TypeReader};
+use crate::reader::{ReaderUtil, TypeReader};
 
 fn append_to_vector<R>(target: &mut Vec<R>, mut extra: Vec<R>) {
     target.append(&mut extra);
 }
 
 #[derive(Debug)]
-struct ModuleBuilder {
+pub struct ModuleBuilder {
     types: Vec<core::FuncType>,
     typeidx: Vec<usize>,
     funcs: Vec<core::Func>,
@@ -157,98 +155,21 @@ impl ModuleBuilder {
             Ok(())
         }
     }
-}
 
-fn read_next_section_header<T: Read>(reader: &mut T) -> io::Result<Option<core::SectionType>> {
-    match core::SectionType::read(reader) {
-        Err(e) => {
-            if e.kind() == io::ErrorKind::UnexpectedEof {
-                // Failing to read a section at the end of the file is expected because that is how we detect the end
-                // of the file
-                Ok(None)
-            } else {
-                Err(e)
-            }
-        }
-        Ok(s) => Ok(Some(s)),
-    }
-}
-
-impl TypeReader for core::RawModule {
-    fn read<T: Read>(reader: &mut T) -> io::Result<Self> {
-        const HEADER_LENGTH: usize = 8;
-        const EXPECTED_HEADER: [u8; 8] = [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
-
-        let mut header: [u8; HEADER_LENGTH] = [0; HEADER_LENGTH];
-
-        // Read in the header
-        reader.read_exact(&mut header)?;
-
-        if header != EXPECTED_HEADER {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Invalid module header",
-            ))
-        } else {
-            let mut current_section_type: Option<core::SectionType> =
-                Some(core::SectionType::TypeSection);
-            let mut module_builder = ModuleBuilder::new();
-
-            loop {
-                if let Some(section_type) = read_next_section_header(reader)? {
-                    // Read the section length
-                    let section_length = usize::try_from(reader.read_leb_u32()?).unwrap();
-                    // And make a scoped reader for the section
-                    let mut section_reader = ScopedReader::new(reader, section_length);
-
-                    // Always skip custom sections wherever they appear
-                    if section_type == core::SectionType::CustomSection {
-                        // Read the section name
-                        let section_name = section_reader.read_name()?;
-                        let _section_body = section_reader.read_bytes_to_end()?;
-
-                        println!("Skipping custom section \"{}\"", section_name);
-                    } else {
-                        while let Some(expected_section_type) = current_section_type {
-                            if expected_section_type == section_type {
-                                // This is the correct section type so we process it and move on
-                                module_builder
-                                    .process_section(section_type, &mut section_reader)?;
-
-                                // And the next section type is the same as this one
-                                current_section_type = Some(expected_section_type);
-                                break;
-                            } else {
-                                // The section type doesn't match, so we move on to see if it
-                                // is the next valid section
-                                current_section_type =
-                                    ModuleBuilder::get_next_section_type(expected_section_type);
-                            }
-                        }
-
-                        if current_section_type == None {
-                            assert!(false, "Sections are in unexpected order");
-                            return Err(io::Error::new(
-                                io::ErrorKind::InvalidData,
-                                "Invalid section order",
-                            ));
-                        }
-                    }
-
-                    if !section_reader.is_at_end() {
-                        assert!(false, "Failed to read whole section");
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            "Failed to read whole section",
-                        ));
-                    }
+    pub fn read_next_section_header<T: Read>(
+        reader: &mut T,
+    ) -> io::Result<Option<core::SectionType>> {
+        match core::SectionType::read(reader) {
+            Err(e) => {
+                if e.kind() == io::ErrorKind::UnexpectedEof {
+                    // Failing to read a section at the end of the file is expected because that is how we detect the end
+                    // of the file
+                    Ok(None)
                 } else {
-                    // End of file, so we can break out of the loop
-                    break;
+                    Err(e)
                 }
             }
-
-            module_builder.make_module()
+            Ok(s) => Ok(Some(s)),
         }
     }
 }

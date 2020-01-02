@@ -4,6 +4,7 @@ mod scoped_reader;
 mod section_reader;
 mod type_reader;
 
+pub use module_reader::*;
 pub use reader_util::*;
 pub use scoped_reader::*;
 pub use section_reader::*;
