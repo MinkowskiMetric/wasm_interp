@@ -2,9 +2,7 @@ use std::cell::RefCell;
 use std::io;
 use std::rc::Rc;
 
-use crate::core::{
-    Callable, DummyCallable, FuncType, Global, GlobalType, MemType, Memory, Table, TableType,
-};
+use crate::core::{Callable, FuncType, Global, GlobalType, MemType, Memory, Table, TableType};
 
 pub trait Resolver {
     fn resolve_function(
@@ -40,37 +38,45 @@ impl Resolver for EmptyResolver {
         &self,
         mod_name: &str,
         name: &str,
-        func_type: &FuncType,
+        _func_type: &FuncType,
     ) -> io::Result<Rc<RefCell<Callable>>> {
-        Ok(Rc::new(RefCell::new(DummyCallable::new(
-            mod_name, name, func_type,
-        ))))
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Imported function {}:{} not found", mod_name, name),
+        ))
     }
     fn resolve_table(
         &self,
-        _mod_name: &str,
-        _name: &str,
-        table_type: &TableType,
+        mod_name: &str,
+        name: &str,
+        _table_type: &TableType,
     ) -> io::Result<Rc<RefCell<Table>>> {
-        Ok(Rc::new(RefCell::new(Table::new(table_type.clone()))))
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Imported table {}:{} not found", mod_name, name),
+        ))
     }
     fn resolve_memory(
         &self,
-        _mod_name: &str,
-        _name: &str,
-        mem_type: &MemType,
+        mod_name: &str,
+        name: &str,
+        _mem_type: &MemType,
     ) -> io::Result<Rc<RefCell<Memory>>> {
-        Ok(Rc::new(RefCell::new(Memory::new(mem_type.clone()))))
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Imported memory {}:{} not found", mod_name, name),
+        ))
     }
     fn resolve_global(
         &self,
-        _mod_name: &str,
-        _name: &str,
-        global_type: &GlobalType,
+        mod_name: &str,
+        name: &str,
+        _global_type: &GlobalType,
     ) -> io::Result<Rc<RefCell<Global>>> {
-        Ok(Rc::new(RefCell::new(Global::new_dummy(
-            global_type.clone(),
-        ))))
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Imported global {}:{} not found", mod_name, name),
+        ))
     }
 }
 

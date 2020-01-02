@@ -35,10 +35,10 @@ impl TypeReader for core::ElemType {
 impl TypeReader for core::Limits {
     fn read<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         match reader.read_u8()? {
-            0x00 => Ok(core::Limits::Unbounded(reader.read_leb_u32()?)),
+            0x00 => Ok(core::Limits::Unbounded(reader.read_leb_usize()?)),
             0x01 => {
-                let min = reader.read_leb_u32()?;
-                let max = reader.read_leb_u32()?;
+                let min = reader.read_leb_usize()?;
+                let max = reader.read_leb_usize()?;
 
                 Ok(core::Limits::Bounded(min, max))
             }

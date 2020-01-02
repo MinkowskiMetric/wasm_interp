@@ -59,8 +59,8 @@ impl ElemType {
 
 #[derive(Debug, Clone)]
 pub enum Limits {
-    Unbounded(u32),
-    Bounded(u32, u32),
+    Unbounded(usize),
+    Bounded(usize, usize),
 }
 
 #[derive(Debug, Clone)]
@@ -73,6 +73,14 @@ impl TableType {
     pub fn new(et: ElemType, lim: Limits) -> Self {
         Self { et, lim }
     }
+
+    pub fn elem_type(&self) -> &ElemType {
+        &self.et
+    }
+
+    pub fn limits(&self) -> &Limits {
+        &self.lim
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +91,10 @@ pub struct MemType {
 impl MemType {
     pub fn new(limits: Limits) -> Self {
         Self { limits }
+    }
+
+    pub fn limits(&self) -> &Limits {
+        &self.limits
     }
 }
 

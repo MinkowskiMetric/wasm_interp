@@ -27,7 +27,6 @@ impl ConstantExpressionExecutor {
             match instruction.opcode() {
                 // There is only a very limited set of instructions that are allowed in a constant expression
                 Opcode::I32Const => {
-                    println!("I32Const {}", instruction.get_single_u32_arg());
                     ret = Some(instruction.get_single_u32_arg());
                 }
                 Opcode::I64Const => {
