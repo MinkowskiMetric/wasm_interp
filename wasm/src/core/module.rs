@@ -1,7 +1,10 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::fs::File;
 use std::io;
+use std::io::BufReader;
+use std::io::Read;
 use std::rc::Rc;
 
 use crate::core::{
@@ -9,6 +12,7 @@ use crate::core::{
     ExpressionStore, Global, Memory, Stack, Table,
 };
 use crate::parser::InstructionSource;
+use crate::reader::{ModuleBuilder, ReaderUtil, ScopedReader, TypeReader};
 
 #[derive(Debug)]
 struct RawModuleMetadata {
@@ -28,6 +32,85 @@ pub struct RawModule {
     start: Option<usize>,
     imports: Vec<core::Import>,
     exports: Vec<core::Export>,
+}
+
+impl TypeReader for core::RawModule {
+    fn read<T: Read>(reader: &mut T) -> io::Result<Self> {
+        const HEADER_LENGTH: usize = 8;
+        const EXPECTED_HEADER: [u8; 8] = [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+
+        let mut header: [u8; HEADER_LENGTH] = [0; HEADER_LENGTH];
+
+        // Read in the header
+        reader.read_exact(&mut header)?;
+
+        if header != EXPECTED_HEADER {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid module header",
+            ))
+        } else {
+            let mut current_section_type: Option<core::SectionType> =
+                Some(core::SectionType::TypeSection);
+            let mut module_builder = ModuleBuilder::new();
+
+            loop {
+                if let Some(section_type) = ModuleBuilder::read_next_section_header(reader)? {
+                    // Read the section length
+                    let section_length = usize::try_from(reader.read_leb_u32()?).unwrap();
+                    // And make a scoped reader for the section
+                    let mut section_reader = ScopedReader::new(reader, section_length);
+
+                    // Always skip custom sections wherever they appear
+                    if section_type == core::SectionType::CustomSection {
+                        // Read the section name
+                        let section_name = section_reader.read_name()?;
+                        let _section_body = section_reader.read_bytes_to_end()?;
+
+                        println!("Skipping custom section \"{}\"", section_name);
+                    } else {
+                        while let Some(expected_section_type) = current_section_type {
+                            if expected_section_type == section_type {
+                                // This is the correct section type so we process it and move on
+                                module_builder
+                                    .process_section(section_type, &mut section_reader)?;
+
+                                // And the next section type is the same as this one
+                                current_section_type = Some(expected_section_type);
+                                break;
+                            } else {
+                                // The section type doesn't match, so we move on to see if it
+                                // is the next valid section
+                                current_section_type =
+                                    ModuleBuilder::get_next_section_type(expected_section_type);
+                            }
+                        }
+
+                        if current_section_type == None {
+                            assert!(false, "Sections are in unexpected order");
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "Invalid section order",
+                            ));
+                        }
+                    }
+
+                    if !section_reader.is_at_end() {
+                        assert!(false, "Failed to read whole section");
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "Failed to read whole section",
+                        ));
+                    }
+                } else {
+                    // End of file, so we can break out of the loop
+                    break;
+                }
+            }
+
+            module_builder.make_module()
+        }
+    }
 }
 
 impl RawModule {
@@ -78,7 +161,7 @@ pub struct Module {
 }
 
 impl Module {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             functions: Vec::new(),
             tables: Vec::new(),
@@ -86,6 +169,13 @@ impl Module {
             globals: Vec::new(),
             exports: HashMap::new(),
         }
+    }
+
+    pub fn load_module_from_path<R: core::Resolver>(file: &str, resolver: &R) -> io::Result<Self>    
+        let mut buf = BufReader::new(File::open(file)?);
+        let raw_module = core::RawModule::read(&mut buf)?;
+        let module = core::Module::resolve_raw_module(raw_module, resolver)?;
+        Ok(module)
     }
 
     fn resolve_imports<Iter: Iterator<Item = core::Import>, Resolver: core::Resolver>(

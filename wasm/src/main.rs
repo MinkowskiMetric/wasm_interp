@@ -2,31 +2,14 @@ mod core;
 mod parser;
 mod reader;
 
-use std::{
-    env,
-    fs::File,
-    io::{self, BufReader},
-};
-
-use reader::TypeReader;
-
-fn load_module_from_path<R: core::Resolver>(file: &str, resolver: &R) -> io::Result<core::Module> {
-    let file = File::open(file)?;
-    let mut file = BufReader::new(file);
-
-    let module = core::RawModule::read(&mut file)?;
-    let module = core::Module::resolve_raw_module(module, resolver)?;
-
-    Ok(module)
-}
-
+use std::env;
 fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
         println!("wasm [mod_name]");
     } else {
-        match load_module_from_path(&args[1], core::EmptyResolver::instance()) {
+        match core::Module::load_module_from_path(&args[1], core::EmptyResolver::instance()) {
             Err(e) => println!("Failed to read module from {} - {}", &args[1], e),
             Ok(module) => {
                 println!("Module {:?}", module);
@@ -215,7 +198,6 @@ mod test {
                 assert!(false, format!("Test file failed to load: {}", e));
             }
         }
-
         Ok(())
     }
 }
