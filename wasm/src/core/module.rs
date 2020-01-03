@@ -4,7 +4,11 @@ use std::convert::TryFrom;
 use std::io;
 use std::rc::Rc;
 
-use crate::core::{self, Callable, Global, Memory, Table};
+use crate::core::{
+    self, stack_entry::StackEntry, Callable, ConstantExpressionExecutor, ConstantExpressionStore,
+    ExpressionStore, Global, Memory, Stack, Table,
+};
+use crate::parser::InstructionSource;
 
 #[derive(Debug)]
 struct RawModuleMetadata {
@@ -21,7 +25,7 @@ pub struct RawModule {
     globals: Vec<core::GlobalDef>,
     elem: Vec<core::Element>,
     data: Vec<core::Data>,
-    start: Option<u32>,
+    start: Option<usize>,
     imports: Vec<core::Import>,
     exports: Vec<core::Export>,
 }
@@ -36,7 +40,7 @@ impl RawModule {
         globals: Vec<core::GlobalDef>,
         elem: Vec<core::Element>,
         data: Vec<core::Data>,
-        start: Option<u32>,
+        start: Option<usize>,
         imports: Vec<core::Import>,
         exports: Vec<core::Export>,
     ) -> Self {
@@ -182,8 +186,14 @@ impl Module {
         globals: Iter,
     ) -> io::Result<()> {
         for global in globals {
-            self.globals
-                .push(Rc::new(RefCell::new(Global::new(global))));
+            let global_type = global.global_type().clone();
+            let init_expr = global.init_expr();
+
+            let results = ConstantExpressionExecutor::instance()
+                .execute_constant_expression(init_expr, self, 1)?;
+            let global = Global::new(global_type, results[0])?;
+
+            self.globals.push(Rc::new(RefCell::new(global)));
         }
 
         Ok(())
@@ -263,11 +273,7 @@ impl Module {
             ))
         } else {
             let table = &self.tables[element.table_idx()];
-            let offset = usize::try_from(
-                core::ConstantExpressionExecutor::instance()
-                    .execute_constant_expression(element.expr(), self)?,
-            )
-            .unwrap();
+            let offset = self.evaluate_offset_expression(element.expr())?;
 
             let functions = element.func_indices();
             let functions: io::Result<Vec<_>> = functions
@@ -310,11 +316,7 @@ impl Module {
             ))
         } else {
             let memory = &self.memories[data.mem_idx()];
-            let offset = usize::try_from(
-                core::ConstantExpressionExecutor::instance()
-                    .execute_constant_expression(data.expr(), self)?,
-            )
-            .unwrap();
+            let offset = self.evaluate_offset_expression(data.expr())?;
 
             let data = data.bytes();
 
@@ -330,6 +332,19 @@ impl Module {
         }
 
         Ok(())
+    }
+
+    fn evaluate_offset_expression<E: InstructionSource>(&self, expr: &E) -> io::Result<usize> {
+        let result =
+            ConstantExpressionExecutor::instance().execute_constant_expression(expr, self, 1)?;
+
+        match result[0] {
+            StackEntry::I32Entry(i) => Ok(usize::try_from(i).unwrap()),
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Type mismatch in offset expression",
+            )),
+        }
     }
 
     pub fn resolve_raw_module<Resolver: core::Resolver>(
@@ -357,21 +372,46 @@ impl Module {
         ret_module.initialize_memory(module.data.into_iter())?;
 
         // Finally, if there is a start function specified then execute it.
-        // TODOTODOTODO - execute the start function
+        if let Some(start) = module.start {
+            if start >= ret_module.functions.len() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Start function not found",
+                ));
+            }
 
-        println!("{:?}", module.metadata);
-        //println!("{:?}", module.typeidx);
-        //println!("{:?}", module.funcs);
-        //println!("{:?}", module.tables);
-        //println!("{:?}", module.mems);
-        //println!("{:?}", module.globals);
-        //println!("{:?}", module.elem);
-        //println!("{:?}", module.data);
-        println!("{:?}", module.start);
-        //println!("{:?}", module.imports);
-        //println!("{:?}", module.exports);
-        // println!("{:?}", module);
+            let start = ret_module.functions[start].clone();
+
+            let mut stack = Stack::new();
+            start.borrow().call(&mut stack, &mut ret_module)?;
+        }
 
         Ok(ret_module)
+    }
+}
+
+impl ConstantExpressionStore for Module {
+    fn get_global_value(&self, idx: usize) -> io::Result<StackEntry> {
+        if idx < self.globals.len() {
+            Ok(self.globals[idx].borrow().get_value().clone())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Global index out of range",
+            ))
+        }
+    }
+}
+
+impl ExpressionStore for Module {
+    fn set_global_value(&mut self, idx: usize, value: StackEntry) -> io::Result<()> {
+        if idx < self.globals.len() {
+            self.globals[idx].borrow_mut().set_value(value)
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Global index out of range",
+            ))
+        }
     }
 }

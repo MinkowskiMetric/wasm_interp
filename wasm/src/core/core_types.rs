@@ -98,7 +98,7 @@ impl MemType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GlobalType {
     t: ValueType,
     m: MutableType,
@@ -107,6 +107,17 @@ pub struct GlobalType {
 impl GlobalType {
     pub fn new(t: ValueType, m: MutableType) -> Self {
         Self { t, m }
+    }
+
+    pub fn is_mutable(&self) -> bool {
+        match self.m {
+            MutableType::Const => false,
+            MutableType::Var => true,
+        }
+    }
+
+    pub fn value_type(&self) -> &ValueType {
+        &self.t
     }
 }
 
@@ -122,6 +133,14 @@ impl FuncType {
             arg_types,
             ret_types,
         }
+    }
+
+    pub fn arg_types(&self) -> &Vec<ValueType> {
+        &self.arg_types
+    }
+
+    pub fn return_types(&self) -> &Vec<ValueType> {
+        &self.ret_types
     }
 }
 
@@ -189,6 +208,14 @@ pub struct GlobalDef {
 impl GlobalDef {
     pub fn new(gt: GlobalType, e: Expr) -> Self {
         Self { gt, e }
+    }
+
+    pub fn global_type(&self) -> &GlobalType {
+        &self.gt
+    }
+
+    pub fn init_expr(&self) -> &Expr {
+        &self.e
     }
 }
 
@@ -258,6 +285,14 @@ pub struct Func {
 impl Func {
     pub fn new(locals: Vec<Locals>, e: Expr) -> Self {
         Self { locals, e }
+    }
+
+    pub fn locals(&self) -> &Vec<Locals> {
+        &self.locals
+    }
+
+    pub fn expr(&self) -> &Expr {
+        &self.e
     }
 }
 
