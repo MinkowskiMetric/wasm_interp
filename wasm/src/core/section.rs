@@ -1,6 +1,7 @@
 use num_enum::TryFromPrimitive;
-use std::convert::TryInto;
-use std::io::{Error, ErrorKind, Result};
+use std::io::{Error, ErrorKind, Read, Result};
+
+use crate::reader::{ReaderUtil, TypeReader};
 
 #[derive(Debug, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
@@ -19,10 +20,9 @@ pub enum SectionType {
     DataSection,
 }
 
-impl SectionType {
-    pub fn from_byte(byte: u8) -> Result<Self> {
-        let s: std::result::Result<SectionType, _> = byte.try_into();
-        match s {
+impl TypeReader for SectionType {
+    fn read<T: Read>(reader: &mut T) -> Result<Self> {
+        match Self::try_from_primitive(reader.read_u8()?) {
             Ok(s) => Ok(s),
             _ => Err(Error::new(ErrorKind::InvalidData, "Unknown section type")),
         }
