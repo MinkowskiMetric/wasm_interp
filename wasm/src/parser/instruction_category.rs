@@ -179,7 +179,11 @@ impl InstructionCategory {
         }
     }
 
-    pub fn get_single_usize_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> usize {
+    pub fn get_single_u32_as_usize_arg<T: InstructionAccumulator>(
+        &self,
+        acc: &T,
+        offset: usize,
+    ) -> usize {
         usize::try_from(self.get_single_u32_arg(acc, offset)).unwrap()
     }
 

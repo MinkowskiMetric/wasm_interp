@@ -20,7 +20,7 @@ struct ModuleBuilder {
     globals: Vec<core::GlobalDef>,
     elem: Vec<core::Element>,
     data: Vec<core::Data>,
-    start: Option<u32>,
+    start: Option<usize>,
     imports: Vec<core::Import>,
     exports: Vec<core::Export>,
 }
@@ -76,7 +76,9 @@ impl ModuleBuilder {
                 &mut self.exports,
                 reader.read_vec(core::Export::read)?,
             )),
-            core::SectionType::StartSection => self.update_start(reader.read_leb_u32()?),
+            core::SectionType::StartSection => {
+                self.update_start(usize::try_from(reader.read_leb_u32()?).unwrap())
+            }
             core::SectionType::ElementSection => Ok(append_to_vector(
                 &mut self.elem,
                 reader.read_vec(core::Element::read)?,
@@ -144,7 +146,7 @@ impl ModuleBuilder {
         }
     }
 
-    fn update_start(&mut self, new_start: u32) -> io::Result<()> {
+    fn update_start(&mut self, new_start: usize) -> io::Result<()> {
         if let Some(_) = self.start {
             Err(io::Error::new(
                 io::ErrorKind::InvalidData,

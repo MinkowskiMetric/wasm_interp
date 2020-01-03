@@ -63,8 +63,8 @@ impl<'a> Instruction<'a> {
         self.cat.get_single_u64_arg(&self.acc, 0)
     }
 
-    pub fn get_single_usize_arg(&self) -> usize {
-        self.cat.get_single_usize_arg(&self.acc, 0)
+    pub fn get_single_u32_as_usize_arg(&self) -> usize {
+        self.cat.get_single_u32_as_usize_arg(&self.acc, 0)
     }
 
     pub fn get_single_f32_arg(&self) -> f32 {
