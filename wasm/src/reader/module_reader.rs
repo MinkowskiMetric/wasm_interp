@@ -3,6 +3,7 @@ use std::io::prelude::*;
 
 use crate::core;
 use crate::reader::{ReaderUtil, TypeReader};
+use std::convert::TryFrom;
 
 fn append_to_vector<R>(target: &mut Vec<R>, mut extra: Vec<R>) {
     target.append(&mut extra);

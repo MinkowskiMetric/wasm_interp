@@ -171,7 +171,7 @@ impl Module {
         }
     }
 
-    pub fn load_module_from_path<R: core::Resolver>(file: &str, resolver: &R) -> io::Result<Self>    
+    pub fn load_module_from_path<R: core::Resolver>(file: &str, resolver: &R) -> io::Result<Self> {
         let mut buf = BufReader::new(File::open(file)?);
         let raw_module = core::RawModule::read(&mut buf)?;
         let module = core::Module::resolve_raw_module(raw_module, resolver)?;
