@@ -3,6 +3,10 @@ mod parser;
 mod reader;
 
 use std::env;
+
+#[cfg(test)]
+use std::io::{Error, ErrorKind, Result};
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -50,9 +54,9 @@ mod test {
             mod_name: &str,
             name: &str,
             _func_type: &FuncType,
-        ) -> io::Result<Rc<RefCell<Callable>>> {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
+        ) -> Result<Rc<RefCell<Callable>>> {
+            Err(Error::new(
+                ErrorKind::InvalidData,
                 format!("Imported function {}:{} not found", mod_name, name),
             ))
         }
@@ -61,9 +65,9 @@ mod test {
             mod_name: &str,
             name: &str,
             _table_type: &TableType,
-        ) -> io::Result<Rc<RefCell<Table>>> {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
+        ) -> Result<Rc<RefCell<Table>>> {
+            Err(Error::new(
+                ErrorKind::InvalidData,
                 format!("Imported table {}:{} not found", mod_name, name),
             ))
         }
@@ -72,9 +76,9 @@ mod test {
             mod_name: &str,
             name: &str,
             _mem_type: &MemType,
-        ) -> io::Result<Rc<RefCell<Memory>>> {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
+        ) -> Result<Rc<RefCell<Memory>>> {
+            Err(Error::new(
+                ErrorKind::InvalidData,
                 format!("Imported memory {}:{} not found", mod_name, name),
             ))
         }
@@ -83,19 +87,19 @@ mod test {
             mod_name: &str,
             name: &str,
             global_type: &GlobalType,
-        ) -> io::Result<Rc<RefCell<Global>>> {
+        ) -> Result<Rc<RefCell<Global>>> {
             if mod_name == "test" && name == "zero" {
                 if global_type.clone() == self.global_zero.borrow().global_type().clone() {
                     Ok(self.global_zero.clone())
                 } else {
-                    Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
+                    Err(Error::new(
+                        ErrorKind::InvalidData,
                         format!("Global import {}:{} type mismatch", mod_name, name),
                     ))
                 }
             } else {
-                Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
+                Err(Error::new(
+                    ErrorKind::InvalidData,
                     format!("Imported global {}:{} not found", mod_name, name),
                 ))
             }
@@ -106,7 +110,7 @@ mod test {
     fn test_load_module() -> std::result::Result<(), String> {
         let resolver = TestResolver::new();
 
-        match load_module_from_path("../test_app/test.wasm", &resolver) {
+        match core::Module::load_module_from_path("../test_app/test.wasm", &resolver) {
             Ok(m) => {
                 assert_eq!(m.exports.len(), 4);
                 assert!(m.exports.contains_key("fib"));
