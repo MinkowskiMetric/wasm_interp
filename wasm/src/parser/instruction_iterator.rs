@@ -55,12 +55,22 @@ impl<'a> Instruction<'a> {
         self.cat == parser::InstructionCategory::End
     }
 
+    #[allow(dead_code)]
     pub fn get_single_u32_arg(&self) -> u32 {
         self.cat.get_single_u32_arg(&self.acc, 0)
     }
 
+    pub fn get_single_i32_arg(&self) -> i32 {
+        self.cat.get_single_i32_arg(&self.acc, 0)
+    }
+
+    #[allow(dead_code)]
     pub fn get_single_u64_arg(&self) -> u64 {
         self.cat.get_single_u64_arg(&self.acc, 0)
+    }
+
+    pub fn get_single_i64_arg(&self) -> i64 {
+        self.cat.get_single_i64_arg(&self.acc, 0)
     }
 
     pub fn get_single_u32_as_usize_arg(&self) -> usize {
