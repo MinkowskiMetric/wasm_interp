@@ -1,13 +1,16 @@
-use std::io;
+use std::{
+    convert::TryFrom,
+    io
+};
 
-use crate::core::{stack_entry::StackEntry, stack_entry::StackEntryValueType, Stack};
+use crate::core::{stack_entry::StackEntry, Stack};
 use crate::parser::{self, Opcode};
 
-fn convert_stack_entry_to_value<ParamType: StackEntryValueType>(
+fn convert_stack_entry_to_value<ParamType: Sized + TryFrom<StackEntry>>(
     e: StackEntry,
 ) -> io::Result<ParamType> {
     // This is only necessary because I don't have a clean sensible error handling strategy
-    match ParamType::try_into_value(e) {
+    match ParamType::try_from(e) {
         Ok(v) => Ok(v),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -16,7 +19,25 @@ fn convert_stack_entry_to_value<ParamType: StackEntryValueType>(
     }
 }
 
-fn binary_op<ParamType: StackEntryValueType, Func: Fn(ParamType, ParamType) -> ParamType>(
+fn unary_op<ParamType: Sized + TryFrom<StackEntry>, RetType: Into<StackEntry>, Func: Fn(ParamType) -> RetType>(stack: &mut Stack, func: Func) -> io::Result<()> {
+    if stack.working_count() < 1 {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Not enough items on stack for op",
+        ))
+    } else {
+        let ops = stack.working_top(1);
+        let ret = func(
+            convert_stack_entry_to_value(ops[0])?,
+        );
+
+        stack.push(ret.into());
+        stack.drop_entries(1, 1);
+        Ok(())
+    }
+}
+
+fn binary_op<ParamType: Sized + TryFrom<StackEntry> + Into<StackEntry>, Func: Fn(ParamType, ParamType) -> ParamType>(
     stack: &mut Stack,
     func: Func,
 ) -> io::Result<()> {
@@ -32,7 +53,7 @@ fn binary_op<ParamType: StackEntryValueType, Func: Fn(ParamType, ParamType) -> P
             convert_stack_entry_to_value(ops[1])?,
         );
 
-        stack.push(ret.from_value());
+        stack.push(ret.into());
         stack.drop_entries(2, 1);
         Ok(())
     }
@@ -162,7 +183,47 @@ impl ExpressionExecutor {
                     store.set_global_value(instruction.get_single_u32_as_usize_arg(), arg)?;
                 }
 
+                Opcode::I32Clz => unary_op(stack, |a: u32| u32::from(a.leading_zeros()))?,
+                Opcode::I32Ctz => unary_op(stack, |a: u32| u32::from(a.trailing_zeros()))?,
+                Opcode::I32Popcnt => unary_op(stack, |a: u32| u32::from(a.count_ones()))?,
                 Opcode::I32Add => binary_op(stack, |a: u32, b| a.wrapping_add(b))?,
+                Opcode::I32Sub => binary_op(stack, |a: u32, b| a.wrapping_sub(b))?,
+                Opcode::I32Mul => binary_op(stack, |a: u32, b| a.wrapping_mul(b))?,
+                Opcode::I32DivS => binary_op(stack, |a: i32, b| a.wrapping_div(b))?,
+                Opcode::I32DivU => binary_op(stack, |a: u32, b| a.wrapping_div(b))?,
+                Opcode::I32RemS => binary_op(stack, |a: i32, b| a.wrapping_rem(b))?,
+                Opcode::I32RemU => binary_op(stack, |a: u32, b| a.wrapping_rem(b))?,
+                Opcode::I32And => binary_op(stack, |a: u32, b| a & b)?,
+                Opcode::I32Or => binary_op(stack, |a: u32, b| a | b)?,
+                Opcode::I32Xor => binary_op(stack, |a: u32, b| a ^ b)?,
+                Opcode::I32Shl => binary_op(stack, |a: u32, b| a << (b % 32))?,
+                Opcode::I32ShrS => binary_op(stack, |a: i32, b| a >> (b % 32))?,
+                Opcode::I32ShrU => binary_op(stack, |a: u32, b| a >> (b % 32))?,
+                Opcode::I32Rotl => binary_op(stack, |a: u32, b| a.rotate_left(b % 32))?,
+                Opcode::I32Rotr => binary_op(stack, |a: u32, b| a.rotate_right(b % 32))?,
+
+                Opcode::I64Clz => unary_op(stack, |a: u64| u64::from(a.leading_zeros()))?,
+                Opcode::I64Ctz => unary_op(stack, |a: u64| u64::from(a.trailing_zeros()))?,
+                Opcode::I64Popcnt => unary_op(stack, |a: u64| u64::from(a.count_ones()))?,
+                Opcode::I64Add => binary_op(stack, |a: u64, b| a.wrapping_add(b))?,
+                Opcode::I64Sub => binary_op(stack, |a: u64, b| a.wrapping_sub(b))?,
+                Opcode::I64Mul => binary_op(stack, |a: u64, b| a.wrapping_mul(b))?,
+                Opcode::I64DivS => binary_op(stack, |a: i64, b| a.wrapping_div(b))?,
+                Opcode::I64DivU => binary_op(stack, |a: u64, b| a.wrapping_div(b))?,
+                Opcode::I64RemS => binary_op(stack, |a: i64, b| a.wrapping_rem(b))?,
+                Opcode::I64RemU => binary_op(stack, |a: u64, b| a.wrapping_rem(b))?,
+                Opcode::I64And => binary_op(stack, |a: u64, b| a & b)?,
+                Opcode::I64Or => binary_op(stack, |a: u64, b| a | b)?,
+                Opcode::I64Xor => binary_op(stack, |a: u64, b| a ^ b)?,
+                Opcode::I64Shl => binary_op(stack, |a: u64, b| a << (b % 32))?,
+                Opcode::I64ShrS => binary_op(stack, |a: i64, b| a >> (b % 32))?,
+                Opcode::I64ShrU => binary_op(stack, |a: u64, b| a >> (b % 32))?,
+                Opcode::I64Rotl => binary_op(stack, |a: u64, b| a.rotate_left(u32::try_from(b % 32).unwrap()))?,
+                Opcode::I64Rotr => binary_op(stack, |a: u64, b| a.rotate_right(u32::try_from(b % 32).unwrap()))?,
+
+                Opcode::F32Add => binary_op(stack, |a: f32, b| a + b)?,
+
+                Opcode::F64Add => binary_op(stack, |a: f64, b| a + b)?,
 
                 _ => {
                     return Err(io::Error::new(
@@ -347,6 +408,35 @@ mod test {
         };
     }
 
+    fn test_unary_opcode_impl(p1: StackEntry, opcode: Opcode) -> Option<StackEntry> {
+        // Allocate a byte vector and generate an instruction stream that will execute the op
+        let mut expr_bytes: Vec<u8> = Vec::new();
+        write_const_instruction(&mut expr_bytes, p1);
+        expr_bytes.push(opcode.into());
+
+        // Now we need a stack and a store to run the op against
+        let mut stack = Stack::new();
+        let mut test_store = TestStore::new();
+
+        if let Err(_) =
+            ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut test_store)
+        {
+            None
+        } else {
+            if stack.working_count() == 1 {
+                Some(stack.working_top(1)[0])
+            } else {
+                None
+            }
+        }
+    }
+
+    macro_rules! test_unary_opcode {
+        ($p1:expr, $opcode:expr, $r:expr) => {
+            assert_eq!(test_unary_opcode_impl($p1.into(), $opcode.into()), Some($r.into()));
+        }
+    }
+
     fn test_binary_opcode_impl(
         p1: StackEntry,
         p2: StackEntry,
@@ -404,7 +494,52 @@ mod test {
         // I haven't written that test because currently it panics in the instruction accumulator which is obviously not the
         // right thing to do.
 
+        test_unary_opcode!(7i32, Opcode::I32Clz, 29u32);
+        test_unary_opcode!(7i32, Opcode::I32Ctz, 0u32);
+        test_unary_opcode!(7i32, Opcode::I32Popcnt, 3u32);
         test_binary_opcode!(7i32, 8i32, Opcode::I32Add, 15u32);
         test_binary_opcode!(7i32, -1i32, Opcode::I32Add, 6u32);
+        test_binary_opcode!(7i32, -1i32, Opcode::I32Sub, 8u32);
+        test_binary_opcode!(-1i32, 7i32, Opcode::I32Sub, -8i32);
+        test_binary_opcode!(7i32, -4i32, Opcode::I32Mul, -28i32);
+        test_binary_opcode!(7i32, -4i32, Opcode::I32DivS, -1i32);
+        test_binary_opcode!(7i32, -4i32, Opcode::I32DivU, 0i32);
+        test_binary_opcode!(7i32, -4i32, Opcode::I32RemS, 3i32);
+        test_binary_opcode!(7i32, -4i32, Opcode::I32RemU, 7i32);
+        test_binary_opcode!(7i32, 3i32, Opcode::I32And, 3i32);
+        test_binary_opcode!(7i32, 15i32, Opcode::I32Or, 15i32);
+        test_binary_opcode!(7i32, 2i32, Opcode::I32Xor, 5i32);
+        test_binary_opcode!(0x00000080u32, 2u32, Opcode::I32Shl, 0x00000200u32);
+        test_binary_opcode!(0x80000000u32, 2u32, Opcode::I32ShrU, 0x20000000u32);
+        test_binary_opcode!(0x80000000u32, 2u32, Opcode::I32ShrS, 0xE0000000u32);
+        test_binary_opcode!(0x40000000u32, 2u32, Opcode::I32Rotl, 0x00000001u32);
+        test_binary_opcode!(0x00000002u32, 2u32, Opcode::I32Rotr, 0x80000000u32);
+
+        test_unary_opcode!(7i64, Opcode::I64Clz, 61u64);
+        test_unary_opcode!(7i64, Opcode::I64Ctz, 0u64);
+        test_unary_opcode!(7i64, Opcode::I64Popcnt, 3u64);
+        test_binary_opcode!(7i64, 8i64, Opcode::I64Add, 15u64);
+        test_binary_opcode!(7i64, -1i64, Opcode::I64Add, 6u64);
+        test_binary_opcode!(7i64, -1i64, Opcode::I64Sub, 8u64);
+        test_binary_opcode!(-1i64, 7i64, Opcode::I64Sub, -8i64);
+        test_binary_opcode!(7i64, -4i64, Opcode::I64Mul, -28i64);
+        test_binary_opcode!(7i64, -4i64, Opcode::I64DivS, -1i64);
+        test_binary_opcode!(7i64, -4i64, Opcode::I64DivU, 0i64);
+        test_binary_opcode!(7i64, -4i64, Opcode::I64RemS, 3i64);
+        test_binary_opcode!(7i64, -4i64, Opcode::I64RemU, 7i64);
+        test_binary_opcode!(7i64, 3i64, Opcode::I64And, 3i64);
+        test_binary_opcode!(7i64, 15i64, Opcode::I64Or, 15i64);
+        test_binary_opcode!(7i64, 2i64, Opcode::I64Xor, 5i64);
+        test_binary_opcode!(0x0000000000000080u64, 2u64, Opcode::I64Shl, 0x0000000000000200u64);
+        test_binary_opcode!(0x8000000000000000u64, 2u64, Opcode::I64ShrU, 0x2000000000000000u64);
+        test_binary_opcode!(0x8000000000000000u64, 2u64, Opcode::I64ShrS, 0xE000000000000000u64);
+        test_binary_opcode!(0x4000000000000000u64, 2u64, Opcode::I64Rotl, 0x0000000000000001u64);
+        test_binary_opcode!(0x0000000000000002u64, 2u64, Opcode::I64Rotr, 0x8000000000000000u64);
+
+        test_binary_opcode!(7.0f32, 8.0f32, Opcode::F32Add, 15.0f32);
+        test_binary_opcode!(7.0f32, -1.0f32, Opcode::F32Add, 6.0f32);
+
+        test_binary_opcode!(7.0f64, 8.0f64, Opcode::F64Add, 15.0f64);
+        test_binary_opcode!(7.0f64, -1.0f64, Opcode::F64Add, 6.0f64);
     }
 }
