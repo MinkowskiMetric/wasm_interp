@@ -1,7 +1,4 @@
-use std::{
-    convert::TryFrom,
-    io
-};
+use std::{convert::TryFrom, io};
 
 use crate::core::{stack_entry::StackEntry, Stack};
 use crate::parser::{self, Opcode};
@@ -19,7 +16,14 @@ fn convert_stack_entry_to_value<ParamType: Sized + TryFrom<StackEntry>>(
     }
 }
 
-fn unary_op<ParamType: Sized + TryFrom<StackEntry>, RetType: Into<StackEntry>, Func: Fn(ParamType) -> RetType>(stack: &mut Stack, func: Func) -> io::Result<()> {
+fn unary_op<
+    ParamType: Sized + TryFrom<StackEntry>,
+    RetType: Into<StackEntry>,
+    Func: Fn(ParamType) -> RetType,
+>(
+    stack: &mut Stack,
+    func: Func,
+) -> io::Result<()> {
     if stack.working_count() < 1 {
         Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -27,9 +31,7 @@ fn unary_op<ParamType: Sized + TryFrom<StackEntry>, RetType: Into<StackEntry>, F
         ))
     } else {
         let ops = stack.working_top(1);
-        let ret = func(
-            convert_stack_entry_to_value(ops[0])?,
-        );
+        let ret = func(convert_stack_entry_to_value(ops[0])?);
 
         stack.push(ret.into());
         stack.drop_entries(1, 1);
@@ -37,7 +39,10 @@ fn unary_op<ParamType: Sized + TryFrom<StackEntry>, RetType: Into<StackEntry>, F
     }
 }
 
-fn binary_op<ParamType: Sized + TryFrom<StackEntry> + Into<StackEntry>, Func: Fn(ParamType, ParamType) -> ParamType>(
+fn binary_op<
+    ParamType: Sized + TryFrom<StackEntry> + Into<StackEntry>,
+    Func: Fn(ParamType, ParamType) -> ParamType,
+>(
     stack: &mut Stack,
     func: Func,
 ) -> io::Result<()> {
@@ -218,8 +223,12 @@ impl ExpressionExecutor {
                 Opcode::I64Shl => binary_op(stack, |a: u64, b| a << (b % 32))?,
                 Opcode::I64ShrS => binary_op(stack, |a: i64, b| a >> (b % 32))?,
                 Opcode::I64ShrU => binary_op(stack, |a: u64, b| a >> (b % 32))?,
-                Opcode::I64Rotl => binary_op(stack, |a: u64, b| a.rotate_left(u32::try_from(b % 32).unwrap()))?,
-                Opcode::I64Rotr => binary_op(stack, |a: u64, b| a.rotate_right(u32::try_from(b % 32).unwrap()))?,
+                Opcode::I64Rotl => binary_op(stack, |a: u64, b| {
+                    a.rotate_left(u32::try_from(b % 32).unwrap())
+                })?,
+                Opcode::I64Rotr => binary_op(stack, |a: u64, b| {
+                    a.rotate_right(u32::try_from(b % 32).unwrap())
+                })?,
 
                 Opcode::F32Add => binary_op(stack, |a: f32, b| a + b)?,
 
@@ -433,8 +442,11 @@ mod test {
 
     macro_rules! test_unary_opcode {
         ($p1:expr, $opcode:expr, $r:expr) => {
-            assert_eq!(test_unary_opcode_impl($p1.into(), $opcode.into()), Some($r.into()));
-        }
+            assert_eq!(
+                test_unary_opcode_impl($p1.into(), $opcode.into()),
+                Some($r.into())
+            );
+        };
     }
 
     fn test_binary_opcode_impl(
@@ -530,11 +542,36 @@ mod test {
         test_binary_opcode!(7i64, 3i64, Opcode::I64And, 3i64);
         test_binary_opcode!(7i64, 15i64, Opcode::I64Or, 15i64);
         test_binary_opcode!(7i64, 2i64, Opcode::I64Xor, 5i64);
-        test_binary_opcode!(0x0000000000000080u64, 2u64, Opcode::I64Shl, 0x0000000000000200u64);
-        test_binary_opcode!(0x8000000000000000u64, 2u64, Opcode::I64ShrU, 0x2000000000000000u64);
-        test_binary_opcode!(0x8000000000000000u64, 2u64, Opcode::I64ShrS, 0xE000000000000000u64);
-        test_binary_opcode!(0x4000000000000000u64, 2u64, Opcode::I64Rotl, 0x0000000000000001u64);
-        test_binary_opcode!(0x0000000000000002u64, 2u64, Opcode::I64Rotr, 0x8000000000000000u64);
+        test_binary_opcode!(
+            0x0000000000000080u64,
+            2u64,
+            Opcode::I64Shl,
+            0x0000000000000200u64
+        );
+        test_binary_opcode!(
+            0x8000000000000000u64,
+            2u64,
+            Opcode::I64ShrU,
+            0x2000000000000000u64
+        );
+        test_binary_opcode!(
+            0x8000000000000000u64,
+            2u64,
+            Opcode::I64ShrS,
+            0xE000000000000000u64
+        );
+        test_binary_opcode!(
+            0x4000000000000000u64,
+            2u64,
+            Opcode::I64Rotl,
+            0x0000000000000001u64
+        );
+        test_binary_opcode!(
+            0x0000000000000002u64,
+            2u64,
+            Opcode::I64Rotr,
+            0x8000000000000000u64
+        );
 
         test_binary_opcode!(7.0f32, 8.0f32, Opcode::F32Add, 15.0f32);
         test_binary_opcode!(7.0f32, -1.0f32, Opcode::F32Add, 6.0f32);
