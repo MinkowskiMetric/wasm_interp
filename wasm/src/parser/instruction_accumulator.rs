@@ -1,15 +1,15 @@
+use anyhow::{anyhow, Result};
 use std::convert::TryFrom;
-use std::io;
 
 pub trait InstructionAccumulator {
-    fn ensure_bytes(&mut self, bytes: usize) -> io::Result<()>;
+    fn ensure_bytes(&mut self, bytes: usize) -> Result<()>;
     fn get_bytes(&self, offset: usize, length: usize) -> &[u8];
 
     fn get_byte(&self, offset: usize) -> u8 {
         self.get_bytes(offset, 1)[0]
     }
 
-    fn ensure_leb_at(&mut self, offset: usize) -> io::Result<usize> {
+    fn ensure_leb_at(&mut self, offset: usize) -> Result<usize> {
         let mut number_length: usize = 1;
         loop {
             self.ensure_bytes(offset + number_length)?;
@@ -79,10 +79,10 @@ pub trait InstructionAccumulator {
                 // At this point we have a shift bit unsigned number, so we need to sign extend it.
                 // This ought to work.
                 let mut result = unsafe { std::mem::transmute(result) };
-                
+
                 if shift < 32 {
-                    result = result << (32-shift);
-                    result = result >> (32-shift);
+                    result = result << (32 - shift);
+                    result = result >> (32 - shift);
                 }
 
                 return result;
@@ -147,10 +147,10 @@ pub trait InstructionAccumulator {
                 // At this point we have a shift bit unsigned number, so we need to sign extend it.
                 // This ought to work.
                 let mut result = unsafe { std::mem::transmute(result) };
-                
+
                 if shift < 64 {
-                    result = result << (64-shift);
-                    result = result >> (64-shift);
+                    result = result << (64 - shift);
+                    result = result >> (64 - shift);
                 }
 
                 return result;
@@ -181,12 +181,9 @@ pub struct SliceInstructionAccumulator<'a> {
 }
 
 impl<'a> InstructionAccumulator for SliceInstructionAccumulator<'a> {
-    fn ensure_bytes(&mut self, bytes: usize) -> io::Result<()> {
+    fn ensure_bytes(&mut self, bytes: usize) -> Result<()> {
         if bytes > self.slice.len() {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Not enough instruction bytes in expression",
-            ))
+            Err(anyhow!("Not enough instruction bytes in expression"))
         } else {
             Ok(())
         }

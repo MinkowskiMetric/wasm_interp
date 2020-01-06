@@ -113,7 +113,7 @@ impl TryFrom<StackEntry> for f64 {
 
 pub trait StackEntryValueType: Sized {
     type Error;
-    
+
     fn from_value(self) -> StackEntry;
     fn try_into_value(entry: StackEntry) -> Result<Self, Self::Error>;
 }

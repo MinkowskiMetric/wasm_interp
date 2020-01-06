@@ -1,6 +1,5 @@
-use std::io;
-
 use crate::parser::{self, InstructionAccumulator};
+use anyhow::{anyhow, Result};
 
 #[derive(Debug)]
 pub struct Instruction<'a> {
@@ -101,7 +100,7 @@ impl<'a, Source: InstructionSource> InstructionIterator<'a, Source> {
         }
     }
 
-    fn next_internal(&mut self) -> io::Result<Instruction<'a>> {
+    fn next_internal(&mut self) -> Result<Instruction<'a>> {
         // So, we can forget about any previous instruction now and move on
         self.current_instr_start = self.current_instr_end;
 
@@ -122,7 +121,7 @@ impl<'a, Source: InstructionSource> InstructionIterator<'a, Source> {
 }
 
 impl<'a, Source: InstructionSource> Iterator for InstructionIterator<'a, Source> {
-    type Item = io::Result<Instruction<'a>>;
+    type Item = Result<Instruction<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.current_instr_end < self.source.get_instruction_bytes().len() {
@@ -156,12 +155,9 @@ impl<'a, Source: InstructionSource> InstructionSource for InstructionIterator<'a
 impl<'a, Source: InstructionSource> parser::InstructionAccumulator
     for InstructionIterator<'a, Source>
 {
-    fn ensure_bytes(&mut self, bytes: usize) -> io::Result<()> {
+    fn ensure_bytes(&mut self, bytes: usize) -> Result<()> {
         if (self.current_instr_start + bytes) > self.source.get_instruction_bytes().len() {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Not enough instruction bytes in expression",
-            ))
+            Err(anyhow!("Not enough instruction bytes in expression"))
         } else {
             Ok(())
         }

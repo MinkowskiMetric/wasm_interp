@@ -1,8 +1,7 @@
+use crate::parser::InstructionSource;
+use anyhow::{anyhow, Result};
 use num_enum::TryFromPrimitive;
 use std::convert::TryInto;
-use std::io::{Error, ErrorKind, Result};
-
-use crate::parser::InstructionSource;
 
 #[derive(Debug, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
@@ -18,10 +17,7 @@ impl ValueType {
         // actual values are offset by 0x7C [cb]
         match byte.try_into() {
             Ok(v) => Ok(v),
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("Invalid value type byte 0x{:02x}", byte),
-            )),
+            _ => Err(anyhow!("Invalid value type byte 0x{:02x}", byte)),
         }
     }
 }
@@ -37,7 +33,7 @@ impl MutableType {
     pub fn from_byte(byte: u8) -> Result<Self> {
         match byte.try_into() {
             Ok(b) => Ok(b),
-            _ => Err(Error::new(ErrorKind::InvalidData, "Unknown mutable type")),
+            _ => Err(anyhow!("Unknown mutable type")),
         }
     }
 }
@@ -52,7 +48,7 @@ impl ElemType {
     pub fn from_byte(byte: u8) -> Result<Self> {
         match byte.try_into() {
             Ok(s) => Ok(s),
-            _ => Err(Error::new(ErrorKind::InvalidData, "Unknown funcref type")),
+            _ => Err(anyhow!("Unknown funcref type")),
         }
     }
 }

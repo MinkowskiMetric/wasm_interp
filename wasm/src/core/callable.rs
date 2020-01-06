@@ -1,6 +1,5 @@
-use std::io;
-
 use crate::core::{Expr, ExpressionExecutor, ExpressionStore, Func, FuncType, Locals, Stack};
+use anyhow::Result;
 
 #[derive(Debug)]
 pub struct WasmExprCallable {
@@ -15,11 +14,7 @@ pub enum Callable {
 }
 
 impl Callable {
-    pub fn call<Store: ExpressionStore>(
-        &self,
-        stack: &mut Stack,
-        store: &mut Store,
-    ) -> io::Result<()> {
+    pub fn call<Store: ExpressionStore>(&self, stack: &mut Stack, store: &mut Store) -> Result<()> {
         match &self {
             Callable::WasmExpr(e) => e.call(stack, store),
         }
@@ -35,7 +30,7 @@ impl WasmExprCallable {
         })
     }
 
-    fn call<Store: ExpressionStore>(&self, stack: &mut Stack, store: &mut Store) -> io::Result<()> {
+    fn call<Store: ExpressionStore>(&self, stack: &mut Stack, store: &mut Store) -> Result<()> {
         // I haven't done any support for locals or parameters or returns at this point.
         // Mostly just because I don't need to do the support for it yet to test simple value setting
         // and it is a lot of type checking boilerplate

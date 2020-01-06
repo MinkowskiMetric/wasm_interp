@@ -1,25 +1,32 @@
-use std::io;
-
 use crate::core::{stack_entry::StackEntry, stack_entry::StackEntryValueType, Stack};
 use crate::parser::{self, Opcode};
+use anyhow::{anyhow, Result};
 
-fn convert_stack_entry_to_value<ParamType: StackEntryValueType>(e: StackEntry) -> io::Result<ParamType> {
+fn convert_stack_entry_to_value<ParamType: StackEntryValueType>(
+    e: StackEntry,
+) -> Result<ParamType> {
     // This is only necessary because I don't have a clean sensible error handling strategy
     match ParamType::try_into_value(e) {
         Ok(v) => Ok(v),
-        _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Failed to convert stack value")),
+        _ => Err(anyhow!("Failed to convert stack value")),
     }
 }
 
-fn binary_op<ParamType: StackEntryValueType, Func: Fn(ParamType, ParamType) -> ParamType>(stack: &mut Stack, func: Func) -> io::Result<()> {
+fn binary_op<ParamType: StackEntryValueType, Func: Fn(ParamType, ParamType) -> ParamType>(
+    stack: &mut Stack,
+    func: Func,
+) -> Result<()> {
     if stack.working_count() < 2 {
-        Err(io::Error::new(io::ErrorKind::InvalidData, "Not enough items on stack for op"))
+        Err(anyhow!("Not enough items on stack for op"))
     } else {
         let ops = stack.working_top(2);
-        let ret = func(convert_stack_entry_to_value(ops[0])?, convert_stack_entry_to_value(ops[1])?);
+        let ret = func(
+            convert_stack_entry_to_value(ops[0])?,
+            convert_stack_entry_to_value(ops[1])?,
+        );
 
         stack.push(ret.from_value());
-        stack.drop_entries(2,1);
+        stack.drop_entries(2, 1);
         Ok(())
     }
 }
@@ -32,11 +39,11 @@ static CONSTANT_EXPRESSION_EXECUTOR_INSTANCE: ConstantExpressionExecutor =
 static EXPRESSION_EXECUTOR_INSTANCE: ExpressionExecutor = ExpressionExecutor {};
 
 pub trait ConstantExpressionStore {
-    fn get_global_value(&self, idx: usize) -> io::Result<StackEntry>;
+    fn get_global_value(&self, idx: usize) -> Result<StackEntry>;
 }
 
 pub trait ExpressionStore: ConstantExpressionStore {
-    fn set_global_value(&mut self, idx: usize, value: StackEntry) -> io::Result<()>;
+    fn set_global_value(&mut self, idx: usize, value: StackEntry) -> Result<()>;
 }
 
 impl ConstantExpressionExecutor {
@@ -53,7 +60,7 @@ impl ConstantExpressionExecutor {
         expr: &ExprType,
         store: &StoreType,
         arity: usize,
-    ) -> io::Result<Vec<StackEntry>> {
+    ) -> Result<Vec<StackEntry>> {
         let mut stack = Stack::new();
 
         for instruction in expr.iter() {
@@ -79,19 +86,13 @@ impl ConstantExpressionExecutor {
                 }
 
                 _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "Instruction is not valid in constant expression",
-                    ));
+                    return Err(anyhow!("Instruction is not valid in constant expression"));
                 }
             }
         }
 
         if stack.working_count() < arity {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Not enough values returned by constant expression",
-            ));
+            return Err(anyhow!("Not enough values returned by constant expression"));
         }
 
         Ok(stack.frame()[stack.working_limit() - arity..stack.working_limit()].to_vec())
@@ -103,12 +104,9 @@ impl ExpressionExecutor {
         &EXPRESSION_EXECUTOR_INSTANCE
     }
 
-    fn get_stack_top(stack: &mut Stack, n: usize) -> io::Result<&[StackEntry]> {
+    fn get_stack_top(stack: &mut Stack, n: usize) -> Result<&[StackEntry]> {
         if stack.working_count() < n {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Not enough values on stack",
-            ))
+            Err(anyhow!("Not enough values on stack"))
         } else {
             Ok(stack.working_top(n))
         }
@@ -119,7 +117,7 @@ impl ExpressionExecutor {
         expr: &ExprType,
         stack: &mut Stack,
         store: &mut StoreType,
-    ) -> io::Result<()> {
+    ) -> anyhow::Result<()> {
         for instruction in expr.iter() {
             let instruction = instruction?;
 
@@ -148,15 +146,12 @@ impl ExpressionExecutor {
                     store.set_global_value(instruction.get_single_u32_as_usize_arg(), arg)?;
                 }
 
-                Opcode::I32Add => binary_op(stack, |a: u32,b| a.wrapping_add(b))?,
+                Opcode::I32Add => binary_op(stack, |a: u32, b| a.wrapping_add(b))?,
 
                 _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!(
-                            "Instruction {:?} is not valid in constant expression",
-                            instruction
-                        ),
+                    return Err(anyhow!(
+                        "Instruction {:?} is not valid in constant expression",
+                        instruction
                     ));
                 }
             }
