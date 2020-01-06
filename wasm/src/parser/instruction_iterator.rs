@@ -183,3 +183,9 @@ pub trait InstructionSource {
         InstructionIterator::new(&self)
     }
 }
+
+impl<T: AsRef<[u8]>> InstructionSource for T {
+    fn get_instruction_bytes(&self) -> &[u8] {
+        self.as_ref()
+    }
+}

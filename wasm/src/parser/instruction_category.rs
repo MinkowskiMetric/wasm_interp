@@ -206,14 +206,14 @@ impl InstructionCategory {
 
     pub fn get_single_f32_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> f32 {
         match self {
-            InstructionCategory::SingleLebInteger => acc.get_f32_at(offset + 1),
+            InstructionCategory::SingleFloat => acc.get_f32_at(offset + 1),
             _ => panic!("Not valid for instruction type"),
         }
     }
 
     pub fn get_single_f64_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> f64 {
         match self {
-            InstructionCategory::SingleLebInteger => acc.get_f64_at(offset + 1),
+            InstructionCategory::SingleDouble => acc.get_f64_at(offset + 1),
             _ => panic!("Not valid for instruction type"),
         }
     }

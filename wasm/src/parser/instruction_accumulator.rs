@@ -38,7 +38,7 @@ pub trait InstructionAccumulator {
 
             let byte = self.get_byte(pos);
 
-            if pos == HIGHEST_CHUNK && (byte & HIGHEST_CHUNK_MASK) != byte {
+            if pos == (offset + HIGHEST_CHUNK) && (byte & HIGHEST_CHUNK_MASK) != byte {
                 panic!("LEB integer is too big");
             }
 
@@ -67,7 +67,7 @@ pub trait InstructionAccumulator {
 
             let byte = self.get_byte(pos);
 
-            if pos == HIGHEST_CHUNK && (byte & HIGHEST_CHUNK_MASK) != byte {
+            if pos == (offset + HIGHEST_CHUNK) && (byte & HIGHEST_CHUNK_MASK) != byte {
                 panic!("LEB integer is too big");
             }
 
@@ -106,7 +106,7 @@ pub trait InstructionAccumulator {
 
             let byte = self.get_byte(pos);
 
-            if pos == HIGHEST_CHUNK && (byte & HIGHEST_CHUNK_MASK) != byte {
+            if pos == (offset + HIGHEST_CHUNK) && (byte & HIGHEST_CHUNK_MASK) != byte {
                 panic!("LEB integer is too big");
             }
 
@@ -135,7 +135,7 @@ pub trait InstructionAccumulator {
 
             let byte = self.get_byte(pos);
 
-            if pos == HIGHEST_CHUNK && (byte & HIGHEST_CHUNK_MASK) != byte {
+            if pos == (offset + HIGHEST_CHUNK) && (byte & HIGHEST_CHUNK_MASK) != byte {
                 panic!("LEB integer is too big");
             }
 
