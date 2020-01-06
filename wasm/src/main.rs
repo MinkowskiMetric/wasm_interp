@@ -2,25 +2,22 @@ mod core;
 mod parser;
 mod reader;
 
+#[cfg(test)]
+use anyhow::anyhow;
+use anyhow::{Context, Result};
 use std::env;
 
-#[cfg(test)]
-use anyhow::{Result, anyhow};
-
-fn main() {
+fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
         println!("wasm [mod_name]");
     } else {
-        match core::Module::load_module_from_path(&args[1], core::EmptyResolver::instance()) {
-            Err(e) => println!("Failed to read module from {} - {}", &args[1], e),
-            Ok(module) => {
-                println!("Module {:?}", module);
-                println!("Done");
-            }
-        }
+        core::Module::load_module_from_path(&args[1], core::EmptyResolver::instance())
+            .with_context(|| format!("Failed to read module from {}", &args[1]))?;
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
