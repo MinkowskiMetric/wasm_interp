@@ -38,7 +38,7 @@ pub trait InstructionAccumulator {
 
             let byte = self.get_byte(pos);
 
-            if pos == HIGHEST_CHUNK && (byte & HIGHEST_CHUNK_MASK) != byte {
+            if pos == (offset + HIGHEST_CHUNK) && (byte & HIGHEST_CHUNK_MASK) != byte {
                 panic!("LEB integer is too big");
             }
 
@@ -67,7 +67,7 @@ pub trait InstructionAccumulator {
 
             let byte = self.get_byte(pos);
 
-            if pos == HIGHEST_CHUNK && (byte & HIGHEST_CHUNK_MASK) != byte {
+            if pos == (offset + HIGHEST_CHUNK) && (byte & HIGHEST_CHUNK_MASK) != byte {
                 panic!("LEB integer is too big");
             }
 
@@ -79,10 +79,10 @@ pub trait InstructionAccumulator {
                 // At this point we have a shift bit unsigned number, so we need to sign extend it.
                 // This ought to work.
                 let mut result = unsafe { std::mem::transmute(result) };
-                
+
                 if shift < 32 {
-                    result = result << (32-shift);
-                    result = result >> (32-shift);
+                    result = result << (32 - shift);
+                    result = result >> (32 - shift);
                 }
 
                 return result;
@@ -106,7 +106,7 @@ pub trait InstructionAccumulator {
 
             let byte = self.get_byte(pos);
 
-            if pos == HIGHEST_CHUNK && (byte & HIGHEST_CHUNK_MASK) != byte {
+            if pos == (offset + HIGHEST_CHUNK) && (byte & HIGHEST_CHUNK_MASK) != byte {
                 panic!("LEB integer is too big");
             }
 
@@ -135,7 +135,7 @@ pub trait InstructionAccumulator {
 
             let byte = self.get_byte(pos);
 
-            if pos == HIGHEST_CHUNK && (byte & HIGHEST_CHUNK_MASK) != byte {
+            if pos == (offset + HIGHEST_CHUNK) && (byte & HIGHEST_CHUNK_MASK) != byte {
                 panic!("LEB integer is too big");
             }
 
@@ -147,10 +147,10 @@ pub trait InstructionAccumulator {
                 // At this point we have a shift bit unsigned number, so we need to sign extend it.
                 // This ought to work.
                 let mut result = unsafe { std::mem::transmute(result) };
-                
+
                 if shift < 64 {
-                    result = result << (64-shift);
-                    result = result >> (64-shift);
+                    result = result << (64 - shift);
+                    result = result >> (64 - shift);
                 }
 
                 return result;
