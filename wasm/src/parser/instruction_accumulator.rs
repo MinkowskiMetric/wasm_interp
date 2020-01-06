@@ -52,7 +52,42 @@ pub trait InstructionAccumulator {
     }
 
     fn get_leb_i32_at(&self, offset: usize) -> i32 {
-        unsafe { std::mem::transmute(self.get_leb_u32_at(offset)) }
+        // To encode a 32 bit number in LEB form can use a maximum of 5 chunks, of which
+        // the highest must only use 4 bits
+        static HIGHEST_CHUNK: usize = 4;
+        static HIGHEST_CHUNK_MASK: u8 = 0x0F;
+
+        let mut pos: usize = offset;
+        let mut result: u32 = 0;
+        let mut shift = 0;
+
+        loop {
+            // It is impossible to go past this point because of the mask check.
+            assert!(pos <= (offset + HIGHEST_CHUNK));
+
+            let byte = self.get_byte(pos);
+
+            if pos == HIGHEST_CHUNK && (byte & HIGHEST_CHUNK_MASK) != byte {
+                panic!("LEB integer is too big");
+            }
+
+            pos += 1;
+            result |= u32::from(byte & 0x7f) << shift;
+            shift += 7;
+
+            if (byte & 0x80) == 0 {
+                // At this point we have a shift bit unsigned number, so we need to sign extend it.
+                // This ought to work.
+                let mut result = unsafe { std::mem::transmute(result) };
+                
+                if shift < 32 {
+                    result = result << (32-shift);
+                    result = result >> (32-shift);
+                }
+
+                return result;
+            }
+        }
     }
 
     fn get_leb_u64_at(&self, offset: usize) -> u64 {
@@ -85,7 +120,42 @@ pub trait InstructionAccumulator {
     }
 
     fn get_leb_i64_at(&self, offset: usize) -> i64 {
-        unsafe { std::mem::transmute(self.get_leb_u64_at(offset)) }
+        // To encode a 64 bit number in LEB form can use a maximum of 10 chunks, of which
+        // the highest must only use 1 bits
+        static HIGHEST_CHUNK: usize = 9;
+        static HIGHEST_CHUNK_MASK: u8 = 0x01;
+
+        let mut pos: usize = offset;
+        let mut result: u64 = 0;
+        let mut shift = 0;
+
+        loop {
+            // It is impossible to go past this point because of the mask check.
+            assert!(pos <= (offset + HIGHEST_CHUNK));
+
+            let byte = self.get_byte(pos);
+
+            if pos == HIGHEST_CHUNK && (byte & HIGHEST_CHUNK_MASK) != byte {
+                panic!("LEB integer is too big");
+            }
+
+            pos += 1;
+            result |= u64::from(byte & 0x7f) << shift;
+            shift += 7;
+
+            if (byte & 0x80) == 0 {
+                // At this point we have a shift bit unsigned number, so we need to sign extend it.
+                // This ought to work.
+                let mut result = unsafe { std::mem::transmute(result) };
+                
+                if shift < 64 {
+                    result = result << (64-shift);
+                    result = result >> (64-shift);
+                }
+
+                return result;
+            }
+        }
     }
 
     fn get_leb_usize_at(&self, offset: usize) -> usize {

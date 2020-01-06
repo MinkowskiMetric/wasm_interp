@@ -179,6 +179,13 @@ impl InstructionCategory {
         }
     }
 
+    pub fn get_single_i32_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> i32 {
+        match self {
+            InstructionCategory::SingleLebInteger => acc.get_leb_i32_at(offset + 1),
+            _ => panic!("Not valid for instruction type"),
+        }
+    }
+
     pub fn get_single_u32_as_usize_arg<T: InstructionAccumulator>(
         &self,
         acc: &T,
@@ -190,6 +197,13 @@ impl InstructionCategory {
     pub fn get_single_u64_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> u64 {
         match self {
             InstructionCategory::SingleLebInteger => acc.get_leb_u64_at(offset + 1),
+            _ => panic!("Not valid for instruction type"),
+        }
+    }
+
+    pub fn get_single_i64_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> i64 {
+        match self {
+            InstructionCategory::SingleLebInteger => acc.get_leb_i64_at(offset + 1),
             _ => panic!("Not valid for instruction type"),
         }
     }

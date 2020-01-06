@@ -1,7 +1,28 @@
 use std::io;
 
-use crate::core::{stack_entry::StackEntry, Stack};
+use crate::core::{stack_entry::StackEntry, stack_entry::StackEntryValueType, Stack};
 use crate::parser::{self, Opcode};
+
+fn convert_stack_entry_to_value<ParamType: StackEntryValueType>(e: StackEntry) -> io::Result<ParamType> {
+    // This is only necessary because I don't have a clean sensible error handling strategy
+    match ParamType::try_into_value(e) {
+        Ok(v) => Ok(v),
+        _ => Err(io::Error::new(io::ErrorKind::InvalidData, "Failed to convert stack value")),
+    }
+}
+
+fn binary_op<ParamType: StackEntryValueType, Func: Fn(ParamType, ParamType) -> ParamType>(stack: &mut Stack, func: Func) -> io::Result<()> {
+    if stack.working_count() < 2 {
+        Err(io::Error::new(io::ErrorKind::InvalidData, "Not enough items on stack for op"))
+    } else {
+        let ops = stack.working_top(2);
+        let ret = func(convert_stack_entry_to_value(ops[0])?, convert_stack_entry_to_value(ops[1])?);
+
+        stack.push(ret.from_value());
+        stack.drop_entries(2,1);
+        Ok(())
+    }
+}
 
 pub struct ConstantExpressionExecutor {}
 pub struct ExpressionExecutor {}
@@ -41,10 +62,10 @@ impl ConstantExpressionExecutor {
             match instruction.opcode() {
                 // There is only a very limited set of instructions that are allowed in a constant expression
                 Opcode::I32Const => {
-                    stack.push(instruction.get_single_u32_arg().into());
+                    stack.push(instruction.get_single_i32_arg().into());
                 }
                 Opcode::I64Const => {
-                    stack.push(instruction.get_single_u64_arg().into());
+                    stack.push(instruction.get_single_i64_arg().into());
                 }
                 Opcode::F32Const => {
                     stack.push(instruction.get_single_f32_arg().into());
@@ -105,10 +126,10 @@ impl ExpressionExecutor {
             match instruction.opcode() {
                 // There is only a very limited set of instructions that are allowed in a constant expression
                 Opcode::I32Const => {
-                    stack.push(instruction.get_single_u32_arg().into());
+                    stack.push(instruction.get_single_i32_arg().into());
                 }
                 Opcode::I64Const => {
-                    stack.push(instruction.get_single_u64_arg().into());
+                    stack.push(instruction.get_single_i64_arg().into());
                 }
                 Opcode::F32Const => {
                     stack.push(instruction.get_single_f32_arg().into());
@@ -126,6 +147,8 @@ impl ExpressionExecutor {
 
                     store.set_global_value(instruction.get_single_u32_as_usize_arg(), arg)?;
                 }
+
+                Opcode::I32Add => binary_op(stack, |a: u32,b| a.wrapping_add(b))?,
 
                 _ => {
                     return Err(io::Error::new(

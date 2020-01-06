@@ -1,4 +1,4 @@
-use std::convert::{From, TryFrom};
+use std::convert::{From, TryFrom, TryInto};
 
 static INVALID_CONVERTSION_MESSAGE: &'static str = "Cannot convert stack entry";
 
@@ -108,6 +108,25 @@ impl TryFrom<StackEntry> for f64 {
             StackEntry::F64Entry(f) => Ok(f),
             _ => Err(INVALID_CONVERTSION_MESSAGE),
         }
+    }
+}
+
+pub trait StackEntryValueType: Sized {
+    type Error;
+    
+    fn from_value(self) -> StackEntry;
+    fn try_into_value(entry: StackEntry) -> Result<Self, Self::Error>;
+}
+
+impl<T: Sized + Into<StackEntry> + TryFrom<StackEntry>> StackEntryValueType for T {
+    type Error = T::Error;
+
+    fn from_value(self) -> StackEntry {
+        self.into()
+    }
+
+    fn try_into_value(entry: StackEntry) -> Result<Self, Self::Error> {
+        entry.try_into()
     }
 }
 
