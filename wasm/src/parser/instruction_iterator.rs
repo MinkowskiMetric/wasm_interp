@@ -85,11 +85,11 @@ impl<'a> Instruction<'a> {
     }
 
     #[allow(dead_code)]
-    pub fn get_pair_u32_arg(&self) -> (u32,u32) {
+    pub fn get_pair_u32_arg(&self) -> (u32, u32) {
         self.cat.get_pair_u32_arg(&self.acc, 0)
     }
 
-    pub fn get_pair_u32_as_usize_arg(&self) -> (usize,usize) {
+    pub fn get_pair_u32_as_usize_arg(&self) -> (usize, usize) {
         self.cat.get_pair_u32_as_usize_arg(&self.acc, 0)
     }
 }

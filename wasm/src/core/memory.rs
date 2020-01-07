@@ -121,7 +121,9 @@ impl Memory {
     fn check_bounds(&self, offset: usize, length: usize) -> Result<()> {
         match offset.checked_add(length) {
             None => Err(anyhow!("Length overflow when accessing memory")),
-            Some(end) if end > self.current_size() * WASM_PAGE_SIZE_IN_BYTES => Err(anyhow!("Attempting to access outside allocated memory")),
+            Some(end) if end > self.current_size() * WASM_PAGE_SIZE_IN_BYTES => {
+                Err(anyhow!("Attempting to access outside allocated memory"))
+            }
             _ => Ok(()),
         }
     }
