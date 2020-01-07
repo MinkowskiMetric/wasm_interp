@@ -1,5 +1,6 @@
 use crate::core::stack_entry::StackEntry;
 
+#[derive(Debug)]
 pub struct StackFrame {
     sp: usize,
     parameter_count: usize,
@@ -44,6 +45,7 @@ impl StackFrame {
     }
 }
 
+#[derive(Debug)]
 pub struct Stack {
     frames: Vec<StackFrame>,
     entries: Vec<StackEntry>,
