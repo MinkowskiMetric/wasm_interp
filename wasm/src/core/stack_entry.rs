@@ -1,4 +1,5 @@
-use std::convert::{From, TryFrom, TryInto};
+use anyhow::{anyhow, Error};
+use std::convert::{From, TryFrom};
 
 static INVALID_CONVERTSION_MESSAGE: &'static str = "Cannot convert stack entry";
 
@@ -11,6 +12,19 @@ pub enum StackEntry {
     F64Entry(f64),
 }
 
+impl StackEntry {
+    pub fn is_same_type(&self, other: &StackEntry) -> bool {
+        match (self, other) {
+            (StackEntry::Unused, StackEntry::Unused)
+            | (StackEntry::I32Entry(_), StackEntry::I32Entry(_))
+            | (StackEntry::I64Entry(_), StackEntry::I64Entry(_))
+            | (StackEntry::F32Entry(_), StackEntry::F32Entry(_))
+            | (StackEntry::F64Entry(_), StackEntry::F64Entry(_)) => true,
+            _ => false,
+        }
+    }
+}
+
 impl From<u32> for StackEntry {
     fn from(i: u32) -> StackEntry {
         StackEntry::I32Entry(i)
@@ -18,14 +32,14 @@ impl From<u32> for StackEntry {
 }
 
 impl TryFrom<StackEntry> for u32 {
-    type Error = &'static str;
+    type Error = Error;
 
     fn try_from(i: StackEntry) -> Result<Self, Self::Error> {
         match i {
             StackEntry::I32Entry(u) => Ok(u),
             // Should this handle the case where it is an I64Entry and the value fits? That would simplify
             // some things, but may complicate other things by not being strict enough
-            _ => Err(INVALID_CONVERTSION_MESSAGE),
+            _ => Err(anyhow!(INVALID_CONVERTSION_MESSAGE)),
         }
     }
 }
@@ -37,7 +51,7 @@ impl From<i32> for StackEntry {
 }
 
 impl TryFrom<StackEntry> for i32 {
-    type Error = &'static str;
+    type Error = Error;
 
     fn try_from(i: StackEntry) -> Result<Self, Self::Error> {
         u32::try_from(i).map(|i| unsafe { std::mem::transmute::<u32, i32>(i) })
@@ -51,14 +65,14 @@ impl From<u64> for StackEntry {
 }
 
 impl TryFrom<StackEntry> for u64 {
-    type Error = &'static str;
+    type Error = Error;
 
     fn try_from(i: StackEntry) -> Result<Self, Self::Error> {
         match i {
             StackEntry::I64Entry(u) => Ok(u),
             // Should this handle the case where it is an I32Entry? That would simplify
             // some things, but may complicate other things by not being strict enough
-            _ => Err(INVALID_CONVERTSION_MESSAGE),
+            _ => Err(anyhow!(INVALID_CONVERTSION_MESSAGE)),
         }
     }
 }
@@ -70,7 +84,7 @@ impl From<i64> for StackEntry {
 }
 
 impl TryFrom<StackEntry> for i64 {
-    type Error = &'static str;
+    type Error = Error;
 
     fn try_from(i: StackEntry) -> Result<Self, Self::Error> {
         u64::try_from(i).map(|i| unsafe { std::mem::transmute::<u64, i64>(i) })
@@ -84,12 +98,12 @@ impl From<f32> for StackEntry {
 }
 
 impl TryFrom<StackEntry> for f32 {
-    type Error = &'static str;
+    type Error = Error;
 
     fn try_from(i: StackEntry) -> Result<Self, Self::Error> {
         match i {
             StackEntry::F32Entry(f) => Ok(f),
-            _ => Err(INVALID_CONVERTSION_MESSAGE),
+            _ => Err(anyhow!(INVALID_CONVERTSION_MESSAGE)),
         }
     }
 }
@@ -101,32 +115,13 @@ impl From<f64> for StackEntry {
 }
 
 impl TryFrom<StackEntry> for f64 {
-    type Error = &'static str;
+    type Error = Error;
 
     fn try_from(i: StackEntry) -> Result<Self, Self::Error> {
         match i {
             StackEntry::F64Entry(f) => Ok(f),
-            _ => Err(INVALID_CONVERTSION_MESSAGE),
+            _ => Err(anyhow!(INVALID_CONVERTSION_MESSAGE)),
         }
-    }
-}
-
-pub trait StackEntryValueType: Sized {
-    type Error;
-
-    fn from_value(self) -> StackEntry;
-    fn try_into_value(entry: StackEntry) -> Result<Self, Self::Error>;
-}
-
-impl<T: Sized + Into<StackEntry> + TryFrom<StackEntry>> StackEntryValueType for T {
-    type Error = T::Error;
-
-    fn from_value(self) -> StackEntry {
-        self.into()
-    }
-
-    fn try_into_value(entry: StackEntry) -> Result<Self, Self::Error> {
-        entry.try_into()
     }
 }
 
@@ -164,106 +159,61 @@ mod test {
 
         assert_eq!(StackEntry::from(32.0f64), StackEntry::F64Entry(32.0));
 
+        assert!(u32::try_from(StackEntry::Unused).is_err());
+        assert_eq!(u32::try_from(StackEntry::I32Entry(32)).ok(), Some(32));
         assert_eq!(
-            u32::try_from(StackEntry::Unused),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
-        assert_eq!(u32::try_from(StackEntry::I32Entry(32)), Ok(32));
-        assert_eq!(
-            u32::try_from(StackEntry::I32Entry(0xFFFFFFFF)),
-            Ok(0xFFFFFFFF)
-        );
-        assert_eq!(i32::try_from(StackEntry::I32Entry(0xFFFFFFFF)), Ok(-1));
-        assert_eq!(
-            u32::try_from(StackEntry::I32Entry(0xFFFFFFE0)),
-            Ok(0xFFFFFFE0)
-        );
-        assert_eq!(i32::try_from(StackEntry::I32Entry(0xFFFFFFE0)), Ok(-32));
-        assert_eq!(
-            u32::try_from(StackEntry::I64Entry(32)),
-            Err(INVALID_CONVERTSION_MESSAGE)
+            u32::try_from(StackEntry::I32Entry(0xFFFFFFFF)).ok(),
+            Some(0xFFFFFFFF)
         );
         assert_eq!(
-            u32::try_from(StackEntry::I64Entry(32)),
-            Err(INVALID_CONVERTSION_MESSAGE)
+            i32::try_from(StackEntry::I32Entry(0xFFFFFFFF)).ok(),
+            Some(-1)
         );
         assert_eq!(
-            u32::try_from(StackEntry::F32Entry(32.0)),
-            Err(INVALID_CONVERTSION_MESSAGE)
+            u32::try_from(StackEntry::I32Entry(0xFFFFFFE0)).ok(),
+            Some(0xFFFFFFE0)
         );
         assert_eq!(
-            u32::try_from(StackEntry::F64Entry(32.0)),
-            Err(INVALID_CONVERTSION_MESSAGE)
+            i32::try_from(StackEntry::I32Entry(0xFFFFFFE0)).ok(),
+            Some(-32)
         );
+        assert!(u32::try_from(StackEntry::I64Entry(32)).is_err());
+        assert!(u32::try_from(StackEntry::I64Entry(32)).is_err());
+        assert!(u32::try_from(StackEntry::F32Entry(32.0)).is_err());
+        assert!(u32::try_from(StackEntry::F64Entry(32.0)).is_err());
 
+        assert!(u64::try_from(StackEntry::Unused).is_err());
+        assert!(u64::try_from(StackEntry::I32Entry(32)).is_err());
+        assert_eq!(u64::try_from(StackEntry::I64Entry(32)).ok(), Some(32));
         assert_eq!(
-            u64::try_from(StackEntry::Unused),
-            Err(INVALID_CONVERTSION_MESSAGE)
+            u64::try_from(StackEntry::I64Entry(0xFFFFFFFFFFFFFFFF)).ok(),
+            Some(0xFFFFFFFFFFFFFFFF)
         );
         assert_eq!(
-            u64::try_from(StackEntry::I32Entry(32)),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
-        assert_eq!(u64::try_from(StackEntry::I64Entry(32)), Ok(32));
-        assert_eq!(
-            u64::try_from(StackEntry::I64Entry(0xFFFFFFFFFFFFFFFF)),
-            Ok(0xFFFFFFFFFFFFFFFF)
+            i64::try_from(StackEntry::I64Entry(0xFFFFFFFFFFFFFFFF)).ok(),
+            Some(-1)
         );
         assert_eq!(
-            i64::try_from(StackEntry::I64Entry(0xFFFFFFFFFFFFFFFF)),
-            Ok(-1)
+            u64::try_from(StackEntry::I64Entry(0xFFFFFFFFFFFFFFE0)).ok(),
+            Some(0xFFFFFFFFFFFFFFE0)
         );
         assert_eq!(
-            u64::try_from(StackEntry::I64Entry(0xFFFFFFFFFFFFFFE0)),
-            Ok(0xFFFFFFFFFFFFFFE0)
+            i64::try_from(StackEntry::I64Entry(0xFFFFFFFFFFFFFFE0)).ok(),
+            Some(-32)
         );
-        assert_eq!(
-            i64::try_from(StackEntry::I64Entry(0xFFFFFFFFFFFFFFE0)),
-            Ok(-32)
-        );
-        assert_eq!(
-            u64::try_from(StackEntry::F32Entry(32.0)),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
-        assert_eq!(
-            u64::try_from(StackEntry::F64Entry(32.0)),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
+        assert!(u64::try_from(StackEntry::F32Entry(32.0)).is_err());
+        assert!(u64::try_from(StackEntry::F64Entry(32.0)).is_err());
 
-        assert_eq!(
-            f32::try_from(StackEntry::Unused),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
-        assert_eq!(
-            f32::try_from(StackEntry::I32Entry(32)),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
-        assert_eq!(
-            f32::try_from(StackEntry::I64Entry(32)),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
-        assert_eq!(f32::try_from(StackEntry::F32Entry(32.0)), Ok(32.0));
-        assert_eq!(
-            f32::try_from(StackEntry::F64Entry(32.0)),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
+        assert!(f32::try_from(StackEntry::Unused).is_err());
+        assert!(f32::try_from(StackEntry::I32Entry(32)).is_err());
+        assert!(f32::try_from(StackEntry::I64Entry(32)).is_err());
+        assert_eq!(f32::try_from(StackEntry::F32Entry(32.0)).ok(), Some(32.0));
+        assert!(f32::try_from(StackEntry::F64Entry(32.0)).is_err());
 
-        assert_eq!(
-            f64::try_from(StackEntry::Unused),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
-        assert_eq!(
-            f64::try_from(StackEntry::I32Entry(32)),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
-        assert_eq!(
-            f64::try_from(StackEntry::I64Entry(32)),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
-        assert_eq!(
-            f64::try_from(StackEntry::F32Entry(32.0)),
-            Err(INVALID_CONVERTSION_MESSAGE)
-        );
-        assert_eq!(f64::try_from(StackEntry::F64Entry(32.0)), Ok(32.0));
+        assert!(f64::try_from(StackEntry::Unused).is_err());
+        assert!(f64::try_from(StackEntry::I32Entry(32)).is_err());
+        assert!(f64::try_from(StackEntry::I64Entry(32)).is_err());
+        assert!(f64::try_from(StackEntry::F32Entry(32.0)).is_err());
+        assert_eq!(f64::try_from(StackEntry::F64Entry(32.0)).ok(), Some(32.0));
     }
 }

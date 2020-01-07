@@ -1,5 +1,5 @@
+use anyhow::{anyhow, Result};
 use std::{cell::RefCell, rc::Rc};
-use anyhow::{Result, anyhow};
 use wasm::core;
 use wasm::core::{
     Callable, FuncType, Global, GlobalType, MemType, Memory, MutableType, Table, TableType,
