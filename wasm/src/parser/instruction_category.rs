@@ -1,6 +1,6 @@
 use crate::parser::{InstructionAccumulator, Opcode};
 use anyhow::{anyhow, Result};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 #[derive(Debug, PartialEq)]
 pub enum InstructionCategory {
@@ -216,5 +216,24 @@ impl InstructionCategory {
             InstructionCategory::SingleDouble => acc.get_f64_at(offset + 1),
             _ => panic!("Not valid for instruction type"),
         }
+    }
+
+    pub fn get_pair_u32_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> (u32,u32) {
+        match self {
+            InstructionCategory::TwoLebInteger => {
+                // TODOTODOTODO - this can be optimized - there is no need to measure the number then read it.
+                // I'll do that later as part of a wider overhaul of the leb reading
+                let first_arg_size = acc.get_leb_size_at(offset + 1);
+                let arg1 = acc.get_leb_u32_at(offset + 1);
+                let arg2 = acc.get_leb_u32_at(offset + first_arg_size + 1);
+                (arg1, arg2)
+            }
+            _ => panic!("Not valid for this instruction type")
+        }
+    }
+
+    pub fn get_pair_u32_as_usize_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> (usize,usize) {
+        let (a1, a2) = self.get_pair_u32_arg(acc, offset);
+        (a1.try_into().unwrap(), a2.try_into().unwrap())
     }
 }

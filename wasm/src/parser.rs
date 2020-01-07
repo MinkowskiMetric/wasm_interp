@@ -9,5 +9,5 @@ pub use instruction_accumulator::{
     make_slice_accumulator, InstructionAccumulator, SliceInstructionAccumulator,
 };
 pub use instruction_category::InstructionCategory;
-pub use instruction_iterator::InstructionSource;
+pub use instruction_iterator::{Instruction, InstructionSource};
 pub use opcode::Opcode;
