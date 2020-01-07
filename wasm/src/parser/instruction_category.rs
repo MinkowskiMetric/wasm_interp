@@ -1,7 +1,6 @@
-use std::convert::TryFrom;
-use std::io;
-
 use crate::parser::{InstructionAccumulator, Opcode};
+use anyhow::{anyhow, Result};
+use std::convert::TryFrom;
 
 #[derive(Debug, PartialEq)]
 pub enum InstructionCategory {
@@ -17,7 +16,7 @@ pub enum InstructionCategory {
 }
 
 impl InstructionCategory {
-    pub fn from_lead_byte(lead_byte: u8) -> io::Result<InstructionCategory> {
+    pub fn from_lead_byte(lead_byte: u8) -> Result<InstructionCategory> {
         Ok(Self::from_opcode(Opcode::from_byte(lead_byte)?))
     }
 
@@ -74,7 +73,7 @@ impl InstructionCategory {
         &self,
         acc: &mut T,
         offset: usize,
-    ) -> io::Result<usize> {
+    ) -> Result<usize> {
         match self {
             InstructionCategory::SingleByte
             | InstructionCategory::Else
@@ -96,7 +95,7 @@ impl InstructionCategory {
         &self,
         acc: &mut T,
         offset: usize,
-    ) -> io::Result<usize> {
+    ) -> Result<usize> {
         let align_size = acc.ensure_leb_at(offset + 1)?;
         let offset_size = acc.ensure_leb_at(offset + 1 + align_size)?;
 
@@ -108,7 +107,7 @@ impl InstructionCategory {
         allow_else: bool,
         acc: &mut T,
         offset: usize,
-    ) -> io::Result<usize> {
+    ) -> Result<usize> {
         // Child instruction offset always starts at 2 because all blocks begin with a block type
         let mut next_child_offset: usize = offset + 2;
         let mut seen_else = false;
@@ -126,10 +125,7 @@ impl InstructionCategory {
 
             if child_instr_cat == InstructionCategory::Else {
                 if seen_else || !allow_else {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "Unexpected else in block",
-                    ));
+                    return Err(anyhow!("Unexpected else in block"));
                 }
 
                 // Move past the else
@@ -151,7 +147,7 @@ impl InstructionCategory {
         &self,
         acc: &mut T,
         offset: usize,
-    ) -> io::Result<usize> {
+    ) -> Result<usize> {
         // This is a bloody complicated instruction to parse
         // Basically we have a vector of integers followed by an integer
 

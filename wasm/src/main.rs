@@ -2,25 +2,22 @@ mod core;
 mod parser;
 mod reader;
 
+#[cfg(test)]
+use anyhow::anyhow;
+use anyhow::{Context, Result};
 use std::env;
 
-#[cfg(test)]
-use std::io::{Error, ErrorKind, Result};
-
-fn main() {
+fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
         println!("wasm [mod_name]");
     } else {
-        match core::Module::load_module_from_path(&args[1], core::EmptyResolver::instance()) {
-            Err(e) => println!("Failed to read module from {} - {}", &args[1], e),
-            Ok(module) => {
-                println!("Module {:?}", module);
-                println!("Done");
-            }
-        }
+        core::Module::load_module_from_path(&args[1], core::EmptyResolver::instance())
+            .with_context(|| format!("Failed to read module from {}", &args[1]))?;
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -55,10 +52,7 @@ mod test {
             name: &str,
             _func_type: &FuncType,
         ) -> Result<Rc<RefCell<Callable>>> {
-            Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("Imported function {}:{} not found", mod_name, name),
-            ))
+            Err(anyhow!("Imported function {}:{} not found", mod_name, name))
         }
         fn resolve_table(
             &self,
@@ -66,10 +60,7 @@ mod test {
             name: &str,
             _table_type: &TableType,
         ) -> Result<Rc<RefCell<Table>>> {
-            Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("Imported table {}:{} not found", mod_name, name),
-            ))
+            Err(anyhow!("Imported table {}:{} not found", mod_name, name))
         }
         fn resolve_memory(
             &self,
@@ -77,10 +68,7 @@ mod test {
             name: &str,
             _mem_type: &MemType,
         ) -> Result<Rc<RefCell<Memory>>> {
-            Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("Imported memory {}:{} not found", mod_name, name),
-            ))
+            Err(anyhow!("Imported memory {}:{} not found", mod_name, name))
         }
         fn resolve_global(
             &self,
@@ -92,16 +80,10 @@ mod test {
                 if global_type.clone() == self.global_zero.borrow().global_type().clone() {
                     Ok(self.global_zero.clone())
                 } else {
-                    Err(Error::new(
-                        ErrorKind::InvalidData,
-                        format!("Global import {}:{} type mismatch", mod_name, name),
-                    ))
+                    Err(anyhow!("Global import {}:{} type mismatch", mod_name, name))
                 }
             } else {
-                Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!("Imported global {}:{} not found", mod_name, name),
-                ))
+                Err(anyhow!("Imported global {}:{} not found", mod_name, name))
             }
         }
     }

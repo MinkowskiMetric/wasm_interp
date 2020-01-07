@@ -1,8 +1,8 @@
+use anyhow::{anyhow, Result};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fs::File;
-use std::io;
 use std::io::BufReader;
 use std::io::Read;
 use std::rc::Rc;
@@ -35,7 +35,7 @@ pub struct RawModule {
 }
 
 impl TypeReader for core::RawModule {
-    fn read<T: Read>(reader: &mut T) -> io::Result<Self> {
+    fn read<T: Read>(reader: &mut T) -> Result<Self> {
         const HEADER_LENGTH: usize = 8;
         const EXPECTED_HEADER: [u8; 8] = [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
 
@@ -45,17 +45,14 @@ impl TypeReader for core::RawModule {
         reader.read_exact(&mut header)?;
 
         if header != EXPECTED_HEADER {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Invalid module header",
-            ))
+            Err(anyhow!("Invalid module header"))
         } else {
             let mut current_section_type: Option<core::SectionType> =
                 Some(core::SectionType::TypeSection);
             let mut module_builder = ModuleBuilder::new();
 
             loop {
-                if let Some(section_type) = ModuleBuilder::read_next_section_header(reader)? {
+                if let Ok(section_type) = ModuleBuilder::read_next_section_header(reader) {
                     // Read the section length
                     let section_length = usize::try_from(reader.read_leb_u32()?).unwrap();
                     // And make a scoped reader for the section
@@ -88,19 +85,13 @@ impl TypeReader for core::RawModule {
 
                         if current_section_type == None {
                             assert!(false, "Sections are in unexpected order");
-                            return Err(io::Error::new(
-                                io::ErrorKind::InvalidData,
-                                "Invalid section order",
-                            ));
+                            return Err(anyhow!("Invalid section order"));
                         }
                     }
 
                     if !section_reader.is_at_end() {
                         assert!(false, "Failed to read whole section");
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            "Failed to read whole section",
-                        ));
+                        return Err(anyhow!("Failed to read whole section"));
                     }
                 } else {
                     // End of file, so we can break out of the loop
@@ -171,7 +162,10 @@ impl Module {
         }
     }
 
-    pub fn load_module_from_path<R: core::Resolver>(file: &str, resolver: &R) -> io::Result<Self> {
+    pub fn load_module_from_path<R: core::Resolver>(
+        file: &str,
+        resolver: &R,
+    ) -> anyhow::Result<Self> {
         let mut buf = BufReader::new(File::open(file)?);
         let raw_module = core::RawModule::read(&mut buf)?;
         let module = core::Module::resolve_raw_module(raw_module, resolver)?;
@@ -183,18 +177,15 @@ impl Module {
         imports: Iter,
         metadata: &RawModuleMetadata,
         resolver: &Resolver,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         for import in imports {
             match import.desc() {
                 core::ImportDesc::TypeIdx(type_index) => {
                     if *type_index >= metadata.types.len() {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            format!(
-                                "Function import {} from module {} has invalid type index",
-                                import.mod_name(),
-                                import.name()
-                            ),
+                        return Err(anyhow!(
+                            "Function import {} from module {} has invalid type index",
+                            import.mod_name(),
+                            import.name()
                         ));
                     }
 
@@ -230,13 +221,10 @@ impl Module {
         &mut self,
         functions: Iter,
         metadata: &RawModuleMetadata,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         for (type_idx, func) in functions {
             if type_idx >= metadata.types.len() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Function has invalid type index",
-                ));
+                return Err(anyhow!("Function has invalid type index"));
             }
 
             self.functions
@@ -248,10 +236,7 @@ impl Module {
         Ok(())
     }
 
-    fn add_tables<Iter: Iterator<Item = core::TableType>>(
-        &mut self,
-        tables: Iter,
-    ) -> io::Result<()> {
+    fn add_tables<Iter: Iterator<Item = core::TableType>>(&mut self, tables: Iter) -> Result<()> {
         for table in tables {
             self.tables.push(Rc::new(RefCell::new(Table::new(table))));
         }
@@ -259,10 +244,7 @@ impl Module {
         Ok(())
     }
 
-    fn add_memories<Iter: Iterator<Item = core::MemType>>(
-        &mut self,
-        memories: Iter,
-    ) -> io::Result<()> {
+    fn add_memories<Iter: Iterator<Item = core::MemType>>(&mut self, memories: Iter) -> Result<()> {
         for memory in memories {
             self.memories
                 .push(Rc::new(RefCell::new(Memory::new(memory))));
@@ -271,10 +253,7 @@ impl Module {
         Ok(())
     }
 
-    fn add_globals<Iter: Iterator<Item = core::GlobalDef>>(
-        &mut self,
-        globals: Iter,
-    ) -> io::Result<()> {
+    fn add_globals<Iter: Iterator<Item = core::GlobalDef>>(&mut self, globals: Iter) -> Result<()> {
         for global in globals {
             let global_type = global.global_type().clone();
             let init_expr = global.init_expr();
@@ -289,15 +268,9 @@ impl Module {
         Ok(())
     }
 
-    fn collect_single_export<T>(
-        idx: usize,
-        items: &Vec<std::rc::Rc<T>>,
-    ) -> io::Result<std::rc::Rc<T>> {
+    fn collect_single_export<T>(idx: usize, items: &Vec<std::rc::Rc<T>>) -> Result<std::rc::Rc<T>> {
         if idx >= items.len() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Export has invalid index",
-            ));
+            return Err(anyhow!("Export has invalid index"));
         }
 
         Ok(items[idx].clone())
@@ -306,7 +279,7 @@ impl Module {
     fn collect_exports<Iter: Iterator<Item = core::Export>>(
         &mut self,
         exports: Iter,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         for core::Export { nm, d } in exports {
             match d {
                 core::ExportDesc::Func(idx) => {
@@ -339,43 +312,31 @@ impl Module {
         Ok(())
     }
 
-    fn pre_execute_validate(&self) -> io::Result<()> {
+    fn pre_execute_validate(&self) -> Result<()> {
         if self.tables.len() > 1 {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Too many tables",
-            ))
+            Err(anyhow!("Too many tables"))
         } else if self.memories.len() > 1 {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Too many memoryies",
-            ))
+            Err(anyhow!("Too many memoryies"))
         } else {
             Ok(())
         }
     }
 
-    fn initialize_table_element(&self, element: core::Element) -> io::Result<()> {
+    fn initialize_table_element(&self, element: core::Element) -> Result<()> {
         if element.table_idx() >= self.tables.len() {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Table initializer table idx out of range",
-            ))
+            Err(anyhow!("Table initializer table idx out of range"))
         } else {
             let table = &self.tables[element.table_idx()];
             let offset = self.evaluate_offset_expression(element.expr())?;
 
             let functions = element.func_indices();
-            let functions: io::Result<Vec<_>> = functions
+            let functions: Result<Vec<_>> = functions
                 .into_iter()
                 .map(|idx| {
                     if *idx < self.functions.len() {
                         Ok(self.functions[*idx].clone())
                     } else {
-                        Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            "Function index out of range",
-                        ))
+                        Err(anyhow!("Function index out of range"))
                     }
                 })
                 .collect();
@@ -390,7 +351,7 @@ impl Module {
     fn initialize_table_elements<Iter: Iterator<Item = core::Element>>(
         &self,
         iter: Iter,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         for element in iter {
             self.initialize_table_element(element)?;
         }
@@ -398,12 +359,9 @@ impl Module {
         Ok(())
     }
 
-    fn initialize_memory_data(&self, data: core::Data) -> io::Result<()> {
+    fn initialize_memory_data(&self, data: core::Data) -> Result<()> {
         if data.mem_idx() >= self.memories.len() {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Memory initializer mem idx out of range",
-            ))
+            Err(anyhow!("Memory initializer mem idx out of range"))
         } else {
             let memory = &self.memories[data.mem_idx()];
             let offset = self.evaluate_offset_expression(data.expr())?;
@@ -416,7 +374,7 @@ impl Module {
         }
     }
 
-    fn initialize_memory<Iter: Iterator<Item = core::Data>>(&self, iter: Iter) -> io::Result<()> {
+    fn initialize_memory<Iter: Iterator<Item = core::Data>>(&self, iter: Iter) -> Result<()> {
         for data in iter {
             self.initialize_memory_data(data)?;
         }
@@ -424,23 +382,20 @@ impl Module {
         Ok(())
     }
 
-    fn evaluate_offset_expression<E: InstructionSource>(&self, expr: &E) -> io::Result<usize> {
+    fn evaluate_offset_expression<E: InstructionSource>(&self, expr: &E) -> Result<usize> {
         let result =
             ConstantExpressionExecutor::instance().execute_constant_expression(expr, self, 1)?;
 
         match result[0] {
             StackEntry::I32Entry(i) => Ok(usize::try_from(i).unwrap()),
-            _ => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Type mismatch in offset expression",
-            )),
+            _ => Err(anyhow!("Type mismatch in offset expression")),
         }
     }
 
     pub fn resolve_raw_module<Resolver: core::Resolver>(
         module: RawModule,
         resolver: &Resolver,
-    ) -> io::Result<Module> {
+    ) -> Result<Module> {
         let mut ret_module = Self::new();
         ret_module.resolve_imports(module.imports.into_iter(), &module.metadata, resolver)?;
         ret_module.add_functions(
@@ -464,10 +419,7 @@ impl Module {
         // Finally, if there is a start function specified then execute it.
         if let Some(start) = module.start {
             if start >= ret_module.functions.len() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Start function not found",
-                ));
+                return Err(anyhow!("Start function not found"));
             }
 
             let start = ret_module.functions[start].clone();
@@ -481,27 +433,21 @@ impl Module {
 }
 
 impl ConstantExpressionStore for Module {
-    fn get_global_value(&self, idx: usize) -> io::Result<StackEntry> {
+    fn get_global_value(&self, idx: usize) -> Result<StackEntry> {
         if idx < self.globals.len() {
             Ok(self.globals[idx].borrow().get_value().clone())
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Global index out of range",
-            ))
+            Err(anyhow!("Global index out of range"))
         }
     }
 }
 
 impl ExpressionStore for Module {
-    fn set_global_value(&mut self, idx: usize, value: StackEntry) -> io::Result<()> {
+    fn set_global_value(&mut self, idx: usize, value: StackEntry) -> Result<()> {
         if idx < self.globals.len() {
             self.globals[idx].borrow_mut().set_value(value)
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Global index out of range",
-            ))
+            Err(anyhow!("Global index out of range"))
         }
     }
 }

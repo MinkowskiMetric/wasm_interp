@@ -1,7 +1,7 @@
+use crate::parser::{InstructionAccumulator, InstructionCategory};
+use anyhow;
 use std::io;
 use std::io::prelude::*;
-
-use crate::parser::{InstructionAccumulator, InstructionCategory};
 
 struct ReaderInstructionAccumulator<'a, T: Read> {
     reader: &'a mut T, // Where we get the instructions from
@@ -21,7 +21,7 @@ where
         }
     }
 
-    pub fn move_to_next(&mut self) -> io::Result<bool> {
+    pub fn move_to_next(&mut self) -> anyhow::Result<bool> {
         // Move past the current instruction
         self.next_inst = self.buf.len();
 
@@ -44,7 +44,7 @@ impl<'a, T> InstructionAccumulator for ReaderInstructionAccumulator<'a, T>
 where
     T: io::Read,
 {
-    fn ensure_bytes(&mut self, bytes: usize) -> io::Result<()> {
+    fn ensure_bytes(&mut self, bytes: usize) -> anyhow::Result<()> {
         let required_bytes = self.next_inst + bytes;
         const BUF_SIZE: usize = 16;
         let mut buf: [u8; BUF_SIZE] = [0; BUF_SIZE];
@@ -70,7 +70,7 @@ where
     }
 }
 
-pub fn read_expression_bytes<T: Read>(reader: &mut T) -> io::Result<Vec<u8>> {
+pub fn read_expression_bytes<T: Read>(reader: &mut T) -> anyhow::Result<Vec<u8>> {
     let mut acc = ReaderInstructionAccumulator::new(reader);
 
     while acc.move_to_next()? {

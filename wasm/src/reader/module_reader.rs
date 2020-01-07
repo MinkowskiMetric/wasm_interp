@@ -1,8 +1,8 @@
-use std::io;
 use std::io::prelude::*;
 
 use crate::core;
 use crate::reader::{ReaderUtil, TypeReader};
+use anyhow::{anyhow, Result};
 use std::convert::TryFrom;
 
 fn append_to_vector<R>(target: &mut Vec<R>, mut extra: Vec<R>) {
@@ -45,7 +45,7 @@ impl ModuleBuilder {
         &mut self,
         section_type: core::SectionType,
         reader: &mut T,
-    ) -> io::Result<()> {
+    ) -> anyhow::Result<()> {
         match section_type {
             core::SectionType::TypeSection => Ok(append_to_vector(
                 &mut self.types,
@@ -115,17 +115,11 @@ impl ModuleBuilder {
         }
     }
 
-    pub fn make_module(self) -> io::Result<core::RawModule> {
+    pub fn make_module(self) -> Result<core::RawModule> {
         if self.typeidx.len() == 0 {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "No functions found",
-            ))
+            Err(anyhow!("No functions found"))
         } else if self.typeidx.len() != self.funcs.len() {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "TypeIdx and code tables do not match sizes",
-            ))
+            Err(anyhow!("TypeIdx and code tables do not match sizes"))
         } else {
             // TODOTODOTODO - this will get more complicated - there is more processing to be done here
             // to tie up the functions table
@@ -145,32 +139,16 @@ impl ModuleBuilder {
         }
     }
 
-    fn update_start(&mut self, new_start: usize) -> io::Result<()> {
+    fn update_start(&mut self, new_start: usize) -> Result<()> {
         if let Some(_) = self.start {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Multiple start sections found",
-            ))
+            Err(anyhow!("Multiple start sections found"))
         } else {
             self.start = Some(new_start);
             Ok(())
         }
     }
 
-    pub fn read_next_section_header<T: Read>(
-        reader: &mut T,
-    ) -> io::Result<Option<core::SectionType>> {
-        match core::SectionType::read(reader) {
-            Err(e) => {
-                if e.kind() == io::ErrorKind::UnexpectedEof {
-                    // Failing to read a section at the end of the file is expected because that is how we detect the end
-                    // of the file
-                    Ok(None)
-                } else {
-                    Err(e)
-                }
-            }
-            Ok(s) => Ok(Some(s)),
-        }
+    pub fn read_next_section_header<T: Read>(reader: &mut T) -> Result<core::SectionType> {
+        core::SectionType::read(reader)
     }
 }
