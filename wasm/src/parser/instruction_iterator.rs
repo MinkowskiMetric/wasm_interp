@@ -83,6 +83,15 @@ impl<'a> Instruction<'a> {
     pub fn get_single_f64_arg(&self) -> f64 {
         self.cat.get_single_f64_arg(&self.acc, 0)
     }
+
+    #[allow(dead_code)]
+    pub fn get_pair_u32_arg(&self) -> (u32,u32) {
+        self.cat.get_pair_u32_arg(&self.acc, 0)
+    }
+
+    pub fn get_pair_u32_as_usize_arg(&self) -> (usize,usize) {
+        self.cat.get_pair_u32_as_usize_arg(&self.acc, 0)
+    }
 }
 
 pub struct InstructionIterator<'a, Source: InstructionSource> {

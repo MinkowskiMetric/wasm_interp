@@ -22,6 +22,17 @@ pub trait InstructionAccumulator {
         }
     }
 
+    fn get_leb_size_at(&self, offset: usize) -> usize {
+        let mut number_length: usize = 1;
+        loop {
+            if 0 == (self.get_byte(offset + number_length - 1) & 0x80) {
+                return number_length;
+            }
+
+            number_length += 1;
+        }
+    }
+
     fn get_leb_u32_at(&self, offset: usize) -> u32 {
         // To encode a 32 bit number in LEB form can use a maximum of 5 chunks, of which
         // the highest must only use 4 bits

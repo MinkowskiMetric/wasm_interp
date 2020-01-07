@@ -131,7 +131,7 @@ fn test_load_module() -> std::result::Result<(), String> {
             assert_eq!(memory[3], 't' as u8);
 
             let mut buf: [u8; 4] = [0; 4];
-            memory.get_data(0, &mut buf);
+            assert!(memory.get_data(0, &mut buf).is_ok());
             assert_eq!(buf, ['t' as u8, 'e' as u8, 's' as u8, 't' as u8]);
 
             assert_eq!(memory[65534], 's' as u8);
@@ -139,7 +139,7 @@ fn test_load_module() -> std::result::Result<(), String> {
             assert_eq!(memory[65536], 'a' as u8);
             assert_eq!(memory[65537], 'n' as u8);
 
-            memory.get_data(65534, &mut buf);
+            assert!(memory.get_data(65534, &mut buf).is_ok());
             assert_eq!(buf, ['s' as u8, 'p' as u8, 'a' as u8, 'n' as u8]);
 
             assert_eq!(m.tables.len(), 1);

@@ -368,7 +368,7 @@ impl Module {
 
             let data = data.bytes();
 
-            memory.borrow_mut().set_data(offset, data);
+            memory.borrow_mut().set_data(offset, data)?;
 
             Ok(())
         }
@@ -448,6 +448,14 @@ impl ExpressionStore for Module {
             self.globals[idx].borrow_mut().set_value(value)
         } else {
             Err(anyhow!("Global index out of range"))
+        }
+    }
+
+    fn get_memory(&self, idx: usize) -> Result<Rc<RefCell<Memory>>> {
+        if idx < self.memories.len() {
+            Ok(self.memories[idx].clone())
+        } else {
+            Err(anyhow!("Memory index out of range"))
         }
     }
 }

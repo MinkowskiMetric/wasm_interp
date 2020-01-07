@@ -1,8 +1,31 @@
-use std::convert::{TryFrom, TryInto};
+use std::{
+    cell::RefCell,
+    convert::{TryFrom, TryInto},
+    rc::Rc,
+};
 
-use crate::core::{stack_entry::StackEntry, Stack};
-use crate::parser::{self, Opcode};
+use crate::core::{Memory, stack_entry::StackEntry, Stack};
+use crate::parser::{self, Opcode, Instruction};
 use anyhow::{anyhow, Result};
+use generic_array::{ArrayLength, GenericArray};
+use generic_array::typenum::consts::{U1, U2, U4, U8};
+
+pub struct ConstantExpressionExecutor {}
+pub struct ExpressionExecutor {}
+
+static CONSTANT_EXPRESSION_EXECUTOR_INSTANCE: ConstantExpressionExecutor =
+    ConstantExpressionExecutor {};
+static EXPRESSION_EXECUTOR_INSTANCE: ExpressionExecutor = ExpressionExecutor {};
+
+pub trait ConstantExpressionStore {
+    fn get_global_value(&self, idx: usize) -> Result<StackEntry>;
+}
+
+pub trait ExpressionStore: ConstantExpressionStore {
+    fn set_global_value(&mut self, idx: usize, value: StackEntry) -> Result<()>;
+
+    fn get_memory(&self, idx: usize) -> Result<Rc<RefCell<Memory>>>;
+}
 
 fn get_stack_top(stack: &mut Stack, n: usize) -> Result<&[StackEntry]> {
     if stack.working_count() < n {
@@ -45,19 +68,164 @@ fn binary_op<
     Ok(())
 }
 
-pub struct ConstantExpressionExecutor {}
-pub struct ExpressionExecutor {}
+trait LEByteConvert {
+    type ArrayLength: ArrayLength<u8>;
 
-static CONSTANT_EXPRESSION_EXECUTOR_INSTANCE: ConstantExpressionExecutor =
-    ConstantExpressionExecutor {};
-static EXPRESSION_EXECUTOR_INSTANCE: ExpressionExecutor = ExpressionExecutor {};
-
-pub trait ConstantExpressionStore {
-    fn get_global_value(&self, idx: usize) -> Result<StackEntry>;
+    fn from_bytes(bytes: GenericArray<u8, Self::ArrayLength>) -> Self;
+    fn to_bytes(&self) -> GenericArray<u8, Self::ArrayLength>;
 }
 
-pub trait ExpressionStore: ConstantExpressionStore {
-    fn set_global_value(&mut self, idx: usize, value: StackEntry) -> Result<()>;
+impl LEByteConvert for i8 {
+    type ArrayLength = U1;
+
+    fn from_bytes(bytes: GenericArray<u8,Self::ArrayLength>) -> Self {
+        Self::from_le_bytes(bytes.into())
+    }
+
+    fn to_bytes(&self) -> GenericArray<u8,Self::ArrayLength> {
+        self.to_le_bytes().into()
+    }
+}
+
+impl LEByteConvert for u8 {
+    type ArrayLength = U1;
+
+    fn from_bytes(bytes: GenericArray<u8,Self::ArrayLength>) -> Self {
+        Self::from_le_bytes(bytes.into())
+    }
+
+    fn to_bytes(&self) -> GenericArray<u8,Self::ArrayLength> {
+        self.to_le_bytes().into()
+    }
+}
+
+impl LEByteConvert for i16 {
+    type ArrayLength = U2;
+
+    fn from_bytes(bytes: GenericArray<u8,Self::ArrayLength>) -> Self {
+        Self::from_le_bytes(bytes.into())
+    }
+
+    fn to_bytes(&self) -> GenericArray<u8,Self::ArrayLength> {
+        self.to_le_bytes().into()
+    }
+}
+
+impl LEByteConvert for u16 {
+    type ArrayLength = U2;
+
+    fn from_bytes(bytes: GenericArray<u8,Self::ArrayLength>) -> Self {
+        Self::from_le_bytes(bytes.into())
+    }
+
+    fn to_bytes(&self) -> GenericArray<u8,Self::ArrayLength> {
+        self.to_le_bytes().into()
+    }
+}
+
+impl LEByteConvert for i32 {
+    type ArrayLength = U4;
+
+    fn from_bytes(bytes: GenericArray<u8,Self::ArrayLength>) -> Self {
+        Self::from_le_bytes(bytes.into())
+    }
+
+    fn to_bytes(&self) -> GenericArray<u8,Self::ArrayLength> {
+        self.to_le_bytes().into()
+    }
+}
+
+impl LEByteConvert for u32 {
+    type ArrayLength = U4;
+
+    fn from_bytes(bytes: GenericArray<u8,Self::ArrayLength>) -> Self {
+        Self::from_le_bytes(bytes.into())
+    }
+
+    fn to_bytes(&self) -> GenericArray<u8,Self::ArrayLength> {
+        self.to_le_bytes().into()
+    }
+}
+
+impl LEByteConvert for u64 {
+    type ArrayLength = U8;
+
+    fn from_bytes(bytes: GenericArray<u8,Self::ArrayLength>) -> Self {
+        Self::from_le_bytes(bytes.into())
+    }
+
+    fn to_bytes(&self) -> GenericArray<u8,Self::ArrayLength> {
+        self.to_le_bytes().into()
+    }
+}
+
+impl LEByteConvert for f32 {
+    type ArrayLength = U4;
+
+    fn from_bytes(bytes: GenericArray<u8,Self::ArrayLength>) -> Self {
+        Self::from_le_bytes(bytes.into())
+    }
+
+    fn to_bytes(&self) -> GenericArray<u8,Self::ArrayLength> {
+        self.to_le_bytes().into()
+    }
+}
+
+impl LEByteConvert for f64 {
+    type ArrayLength = U8;
+
+    fn from_bytes(bytes: GenericArray<u8,Self::ArrayLength>) -> Self {
+        Self::from_le_bytes(bytes.into())
+    }
+
+    fn to_bytes(&self) -> GenericArray<u8,Self::ArrayLength> {
+        self.to_le_bytes().into()
+    }
+}
+
+fn mem_load<ValueType: Sized + Into<StackEntry>, IntType: Sized + LEByteConvert, FuncType: Fn(IntType) -> ValueType, Store: ExpressionStore>(instruction: Instruction, stack: &mut Stack, store: &mut Store, func: FuncType) -> Result<()> {
+    let (mem_idx, offset) = instruction.get_pair_u32_as_usize_arg();
+    let memory = store.get_memory(mem_idx)?;
+    let memory = memory.borrow();
+
+    let base_address = get_stack_top(stack, 1)?[0];
+    let base_address = usize::try_from(u32::try_from(base_address)?).unwrap();
+    stack.pop();
+
+    let final_address = base_address + offset;
+
+    // A limitaton of the rust syntax here means you can't make the array the correct
+    // size. Which is a bit annoying, but not very.
+    let mut bytes: GenericArray<u8,IntType::ArrayLength> = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+    memory.get_data(final_address, &mut bytes)?;
+
+    let int_value = IntType::from_bytes(bytes);
+    let ret_value = func(int_value);
+
+    stack.push(ret_value.into());
+
+    Ok(())
+}
+
+fn mem_store<ValueType: Sized + TryFrom<StackEntry, Error = anyhow::Error>, IntType: Sized + LEByteConvert, FuncType: Fn(ValueType) -> IntType, Store: ExpressionStore>(instruction: Instruction, stack: &mut Stack, store: &mut Store, func: FuncType) -> Result<()> {
+    let (mem_idx, offset) = instruction.get_pair_u32_as_usize_arg();
+    let memory = store.get_memory(mem_idx)?;
+    let memory = &mut memory.borrow_mut();
+
+    let value = get_stack_top(stack, 1)?[0];
+    let value = ValueType::try_from(value)?;
+    stack.pop();
+
+    let base_address = get_stack_top(stack, 1)?[0];
+    let base_address = usize::try_from(u32::try_from(base_address)?).unwrap();
+    stack.pop();
+
+    let final_address = base_address + offset;
+
+    let bytes = func(value).to_bytes();
+    memory.set_data(final_address, &bytes)?;
+
+    Ok(())
 }
 
 impl ConstantExpressionExecutor {
@@ -151,6 +319,61 @@ impl ExpressionExecutor {
                         stack.push(arguments[0]);
                     }
                 }
+
+                Opcode::I32Load => { mem_load(instruction, stack, store, |v: u32| v)?; }
+                Opcode::I64Load => { mem_load(instruction, stack, store, |v: u64| v)?; }
+                Opcode::F32Load => { mem_load(instruction, stack, store, |v: f32| v)?; }
+                Opcode::F64Load => { mem_load(instruction, stack, store, |v: f64| v)?; }
+
+                Opcode::I32Load8S => { mem_load(instruction, stack, store, |v: i8| i32::from(v))?; }
+                Opcode::I32Load8U => { mem_load(instruction, stack, store, |v: u8| u32::from(v))?; }
+                Opcode::I32Load16S => { mem_load(instruction, stack, store, |v: i16| i32::from(v))?; }
+                Opcode::I32Load16U => { mem_load(instruction, stack, store, |v: u16| u32::from(v))?; }
+                Opcode::I64Load8S => { mem_load(instruction, stack, store, |v: i8| i64::from(v))?; }
+                Opcode::I64Load8U => { mem_load(instruction, stack, store, |v: u8| u64::from(v))?; }
+                Opcode::I64Load16S => { mem_load(instruction, stack, store, |v: i16| i64::from(v))?; }
+                Opcode::I64Load16U => { mem_load(instruction, stack, store, |v: u16| u64::from(v))?; }
+                Opcode::I64Load32S => { mem_load(instruction, stack, store, |v: i32| i64::from(v))?; }
+                Opcode::I64Load32U => { mem_load(instruction, stack, store, |v: u32| u64::from(v))?; }
+
+                Opcode::I32Store => { mem_store(instruction, stack, store, |v: u32| v)?; }
+                Opcode::I64Store => { mem_store(instruction, stack, store, |v: u64| v)?; }
+                Opcode::F32Store => { mem_store(instruction, stack, store, |v: f32| v)?; }
+                Opcode::F64Store => { mem_store(instruction, stack, store, |v: f64| v)?; }
+
+                Opcode::I32Store8 => { mem_store(instruction, stack, store, |v: u32| u8::try_from(v & 0xff).unwrap())?; }
+                Opcode::I32Store16 => { mem_store(instruction, stack, store, |v: u32| u16::try_from(v & 0xffff).unwrap())?; }
+                Opcode::I64Store8 => { mem_store(instruction, stack, store, |v: u64| u8::try_from(v & 0xff).unwrap())?; }
+                Opcode::I64Store16 => { mem_store(instruction, stack, store, |v: u64| u16::try_from(v & 0xffff).unwrap())?; }
+                Opcode::I64Store32 => { mem_store(instruction, stack, store, |v: u64| u32::try_from(v & 0xffffffff).unwrap())?; }
+                
+                Opcode::MemorySize => {
+                    let memory_idx = instruction.get_single_u32_as_usize_arg();
+                    let memory = store.get_memory(memory_idx)?;
+                    let memory = memory.borrow();
+
+                    let size = u32::try_from(memory.current_size()).unwrap();
+                    stack.push(size.into());
+                }
+                Opcode::MemoryGrow => {
+                    let memory_idx = instruction.get_single_u32_as_usize_arg();
+                    let memory = store.get_memory(memory_idx)?;
+                    let memory = &mut memory.borrow_mut();
+
+                    let grow_by = get_stack_top(stack, 1)?[0];
+                    let grow_by = u32::try_from(grow_by)?;
+                    let grow_by = usize::try_from(grow_by).unwrap();
+                    stack.pop();
+
+                    let original_size = u32::try_from(memory.current_size()).unwrap();
+
+                    if memory.grow_by(grow_by).is_ok() {
+                        stack.push(original_size.into());
+                    } else {
+                        stack.push(StackEntry::from(-1i32));
+                    }
+                }
+
                 Opcode::LocalGet => {
                     let local_idx = instruction.get_single_u32_as_usize_arg();
                     if local_idx >= stack.local_count() {
@@ -263,11 +486,21 @@ mod test {
 
     use std::convert::TryInto;
 
-    struct TestStore {}
+    struct TestStore {
+        memory: Rc<RefCell<Memory>>,
+        memory_enabled: bool,
+    }
 
     impl TestStore {
         pub fn new() -> Self {
-            Self {}
+            Self {
+                memory: Rc::new(RefCell::new(Memory::new_from_bounds(1, Some(3)))),
+                memory_enabled: false,
+            }
+        }
+
+        pub fn enable_memory(&mut self) {
+            self.memory_enabled = true;
         }
     }
 
@@ -280,6 +513,18 @@ mod test {
     impl ExpressionStore for TestStore {
         fn set_global_value(&mut self, _idx: usize, _value: StackEntry) -> Result<()> {
             Err(anyhow!("Global value not present in test store"))
+        }
+
+        fn get_memory(&self, idx: usize) -> Result<Rc<RefCell<Memory>>> {
+            if self.memory_enabled {
+                if idx == 0 {
+                    Ok(self.memory.clone())
+                } else {
+                    Err(anyhow!("Memory out of range"))
+                }
+            } else {
+                Err(anyhow!("Memory not present in store"))
+            }
         }
     }
 
@@ -792,5 +1037,224 @@ mod test {
         stack.push(42.0f32.into());
         println!("{:?}", stack);
         assert_eq!(do_local_get(&mut stack, &mut store, 0), Some(42i32.into()));
+    }
+
+    #[test]
+    fn test_memory() {
+        let mut stack = Stack::new();
+        let mut store = TestStore::new();
+
+        store.enable_memory();
+
+        static FIXED_DATA: [u8; 8] = [0x0d, 0xf0, 0xad, 0xba, 0x0d, 0xf0, 0xad, 0xba, ];
+        store.get_memory(0).unwrap().borrow_mut().set_data(0, &FIXED_DATA).unwrap();
+
+        let mut expr_bytes = Vec::new();
+        write_const_instruction(&mut expr_bytes, 0u32.into());
+
+        expr_bytes.push(Opcode::I32Load.into());
+        write_leb(&mut expr_bytes, 0, false);
+        write_leb(&mut expr_bytes, 0, false);
+
+        assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+        assert_eq!(stack.working_count(), 1);
+        assert_eq!(stack.working_top(1)[0], 0xbaadf00du32.into());
+        stack.pop();
+
+        let mut expr_bytes = Vec::new();
+        write_const_instruction(&mut expr_bytes, 0u32.into());
+        write_const_instruction(&mut expr_bytes, 42.0f32.into());
+
+        expr_bytes.push(Opcode::F32Store.into());
+        write_leb(&mut expr_bytes, 0, false);
+        write_leb(&mut expr_bytes, 0, false);
+
+        assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+        assert_eq!(stack.working_count(), 0);
+
+        let mut expr_bytes = Vec::new();
+        write_const_instruction(&mut expr_bytes, 0u32.into());
+
+        expr_bytes.push(Opcode::F32Load.into());
+        write_leb(&mut expr_bytes, 0, false);
+        write_leb(&mut expr_bytes, 0, false);
+
+        assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+        assert_eq!(stack.working_count(), 1);
+        assert_eq!(stack.working_top(1)[0], 42.0f32.into());
+        stack.pop();
+
+        for (unsigned_opcode, signed_opcode, byte_count) in &[(Opcode::I32Load8U, Opcode::I32Load8S, 1), (Opcode::I32Load16U, Opcode::I32Load16S, 2), (Opcode::I32Load, Opcode::I32Load, 4)] {
+            let mut unsigned_bytes: [u8;8] = [0;8];
+            let mut signed_bytes: [u8;8] = [0;8];
+
+            for i in 0..8 {
+                if i < *byte_count {
+                    unsigned_bytes[i] = 0;
+                    signed_bytes[i] = 0xff;
+                } else {
+                    unsigned_bytes[i] = 0xff;
+                    signed_bytes[i] = 0;
+                }
+            }
+
+            store.get_memory(0).unwrap().borrow_mut().set_data(128, &unsigned_bytes).unwrap();
+            store.get_memory(0).unwrap().borrow_mut().set_data(256, &signed_bytes).unwrap();
+
+            let mut expr_bytes = Vec::new();
+            write_const_instruction(&mut expr_bytes, 128u32.into());
+
+            expr_bytes.push(unsigned_opcode.clone().into());
+            write_leb(&mut expr_bytes, 0, false);
+            write_leb(&mut expr_bytes, 0, false);
+
+            assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+            assert_eq!(stack.working_count(), 1);
+            assert_eq!(stack.working_top(1)[0], 0u32.into());
+            stack.pop();
+
+            let mut expr_bytes = Vec::new();
+            write_const_instruction(&mut expr_bytes, 256u32.into());
+
+            expr_bytes.push(signed_opcode.clone().into());
+            write_leb(&mut expr_bytes, 0, false);
+            write_leb(&mut expr_bytes, 0, false);
+
+            assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+            assert_eq!(stack.working_count(), 1);
+            assert_eq!(stack.working_top(1)[0], StackEntry::from(-1i32));
+            stack.pop();
+        }
+
+        for (unsigned_opcode, signed_opcode, byte_count) in &[(Opcode::I64Load8U, Opcode::I64Load8S, 1), (Opcode::I64Load16U, Opcode::I64Load16S, 2), (Opcode::I64Load32U, Opcode::I64Load32S, 4), (Opcode::I64Load, Opcode::I64Load, 8)] {
+            let mut unsigned_bytes: [u8;8] = [0;8];
+            let mut signed_bytes: [u8;8] = [0;8];
+
+            for i in 0..8 {
+                if i < *byte_count {
+                    unsigned_bytes[i] = 0;
+                    signed_bytes[i] = 0xff;
+                } else {
+                    unsigned_bytes[i] = 0xff;
+                    signed_bytes[i] = 0;
+                }
+            }
+
+            store.get_memory(0).unwrap().borrow_mut().set_data(128, &unsigned_bytes).unwrap();
+            store.get_memory(0).unwrap().borrow_mut().set_data(256, &signed_bytes).unwrap();
+
+            let mut expr_bytes = Vec::new();
+            write_const_instruction(&mut expr_bytes, 128u32.into());
+
+            expr_bytes.push(unsigned_opcode.clone().into());
+            write_leb(&mut expr_bytes, 0, false);
+            write_leb(&mut expr_bytes, 0, false);
+
+            assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+            assert_eq!(stack.working_count(), 1);
+            assert_eq!(stack.working_top(1)[0], 0u64.into());
+            stack.pop();
+
+            let mut expr_bytes = Vec::new();
+            write_const_instruction(&mut expr_bytes, 256u32.into());
+
+            expr_bytes.push(signed_opcode.clone().into());
+            write_leb(&mut expr_bytes, 0, false);
+            write_leb(&mut expr_bytes, 0, false);
+
+            assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+            assert_eq!(stack.working_count(), 1);
+            assert_eq!(stack.working_top(1)[0], StackEntry::from(-1i64));
+            stack.pop();
+        }
+
+        for (opcode, byte_count) in &[(Opcode::I32Store8, 1), (Opcode::I32Store16, 2), (Opcode::I32Store, 4)] {
+            let set_bytes: [u8;8] = [0xff;8];
+
+            store.get_memory(0).unwrap().borrow_mut().set_data(128, &set_bytes).unwrap();
+
+            let mut expr_bytes = Vec::new();
+            write_const_instruction(&mut expr_bytes, 128u32.into());
+            write_const_instruction(&mut expr_bytes, 0u32.into());
+
+            expr_bytes.push(opcode.clone().into());
+            write_leb(&mut expr_bytes, 0, false);
+            write_leb(&mut expr_bytes, 0, false);
+
+            assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+            assert_eq!(stack.working_count(), 0);
+
+            let mut check_bytes: [u8;8] = [0xff;8];
+            store.get_memory(0).unwrap().borrow().get_data(128, &mut check_bytes).unwrap();
+
+            for i in 0..8 {
+                if i < *byte_count {
+                    assert_eq!(check_bytes[i], 0x00);
+                } else {
+                    assert_eq!(check_bytes[i], 0xff);
+                }
+            }
+        }
+
+        for (opcode, byte_count) in &[(Opcode::I64Store8, 1), (Opcode::I64Store16, 2), (Opcode::I64Store32, 4), (Opcode::I64Store, 8)] {
+            let set_bytes: [u8;8] = [0xff;8];
+
+            store.get_memory(0).unwrap().borrow_mut().set_data(128, &set_bytes).unwrap();
+
+            let mut expr_bytes = Vec::new();
+            write_const_instruction(&mut expr_bytes, 128u32.into());
+            write_const_instruction(&mut expr_bytes, 0u64.into());
+
+            expr_bytes.push(opcode.clone().into());
+            write_leb(&mut expr_bytes, 0, false);
+            write_leb(&mut expr_bytes, 0, false);
+
+            assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+            assert_eq!(stack.working_count(), 0);
+
+            let mut check_bytes: [u8;8] = [0xff;8];
+            store.get_memory(0).unwrap().borrow().get_data(128, &mut check_bytes).unwrap();
+
+            for i in 0..8 {
+                if i < *byte_count {
+                    assert_eq!(check_bytes[i], 0x00);
+                } else {
+                    assert_eq!(check_bytes[i], 0xff);
+                }
+            }
+        }
+
+        let mut expr_bytes = Vec::new();
+        expr_bytes.push(Opcode::MemorySize.into());
+        write_leb(&mut expr_bytes, 0, false);
+
+        assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+        assert_eq!(stack.working_count(), 1);
+        assert_eq!(stack.working_top(1)[0], 1u32.into());
+        stack.pop();
+
+        let mut expr_bytes = Vec::new();
+        write_const_instruction(&mut expr_bytes, 1i32.into());
+        expr_bytes.push(Opcode::MemoryGrow.into());
+        write_leb(&mut expr_bytes, 0, false);
+
+        assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+        assert_eq!(stack.working_count(), 1);
+        assert_eq!(stack.working_top(1)[0], 1u32.into());
+        stack.pop();
+
+        assert_eq!(store.get_memory(0).unwrap().borrow().current_size(), 2);
+
+        let mut expr_bytes = Vec::new();
+        write_const_instruction(&mut expr_bytes, 10i32.into());
+        expr_bytes.push(Opcode::MemoryGrow.into());
+        write_leb(&mut expr_bytes, 0, false);
+
+        assert!(ExpressionExecutor::instance().execute(&expr_bytes, &mut stack, &mut store).is_ok());
+        assert_eq!(stack.working_count(), 1);
+        assert_eq!(stack.working_top(1)[0], StackEntry::from(-1i32));
+        stack.pop();
+
+        assert_eq!(store.get_memory(0).unwrap().borrow().current_size(), 2);
     }
 }

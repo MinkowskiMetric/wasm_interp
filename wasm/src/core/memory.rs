@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::core::{memory_page::*, Limits, MemType};
+use anyhow::{anyhow, Result};
 
 #[derive(Debug)]
 pub struct Memory {
@@ -19,6 +20,10 @@ impl Memory {
             Limits::Unbounded(minimum_pages) => (*minimum_pages, None),
         };
 
+        Self::new_from_bounds(minimum_pages, maximum_pages)
+    }
+
+    pub fn new_from_bounds(minimum_pages: usize, maximum_pages: Option<usize>) -> Self {
         let mut pages = Vec::with_capacity(minimum_pages);
         for _ in 0..minimum_pages {
             pages.push(MemoryPage::new())
@@ -47,7 +52,23 @@ impl Memory {
         self.pages.len()
     }
 
-    pub fn set_data(&mut self, offset: usize, data: &[u8]) {
+    pub fn grow_by(&mut self, grow_by: usize) -> Result<()> {
+        match self.current_size().checked_add(grow_by) {
+            Some(new_size) if new_size <= self.max_size().unwrap_or(new_size) => {
+                for _ in 0..grow_by {
+                    self.pages.push(MemoryPage::new())
+                }
+
+                Ok(())
+            }
+
+            _ => Err(anyhow!("New memory is too big")),
+        }
+    }
+
+    pub fn set_data(&mut self, offset: usize, data: &[u8]) -> Result<()> {
+        self.check_bounds(offset, data.len())?;
+
         let (mut current_page, mut current_page_offset) = split_page_from_address(offset);
         let mut data_start = 0;
         let mut data_remaining = data.len();
@@ -67,10 +88,13 @@ impl Memory {
             current_page += 1;
             current_page_offset = 0;
         }
+
+        Ok(())
     }
 
-    #[allow(dead_code)]
-    pub fn get_data(&self, offset: usize, data: &mut [u8]) {
+    pub fn get_data(&self, offset: usize, data: &mut [u8]) -> Result<()> {
+        self.check_bounds(offset, data.len())?;
+
         let (mut current_page, mut current_page_offset) = split_page_from_address(offset);
         let mut data_start = 0;
         let mut data_remaining = data.len();
@@ -89,6 +113,16 @@ impl Memory {
             data_remaining -= bytes_to_copy;
             current_page += 1;
             current_page_offset = 0;
+        }
+
+        Ok(())
+    }
+
+    fn check_bounds(&self, offset: usize, length: usize) -> Result<()> {
+        match offset.checked_add(length) {
+            None => Err(anyhow!("Length overflow when accessing memory")),
+            Some(end) if end > self.current_size() * WASM_PAGE_SIZE_IN_BYTES => Err(anyhow!("Attempting to access outside allocated memory")),
+            _ => Ok(()),
         }
     }
 }
