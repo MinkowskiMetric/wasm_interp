@@ -340,6 +340,20 @@ impl ExpressionExecutor {
             let instruction = instruction?;
 
             match instruction.opcode() {
+                Opcode::Unreachable => return Err(anyhow!("Unreachable opcode")),
+                Opcode::Nop => {}
+                Opcode::Block => unimplemented!(),
+                Opcode::Loop => unimplemented!(),
+                Opcode::If => unimplemented!(),
+                Opcode::Else => panic!("Else opcode should not pass through opcode iterator"),
+                Opcode::End => panic!("End opcode should not pass through opcode iterator"),
+                Opcode::Br => unimplemented!(),
+                Opcode::BrIf => unimplemented!(),
+                Opcode::BrTable => unimplemented!(),
+                Opcode::Return => unimplemented!(),
+                Opcode::Call => unimplemented!(),
+                Opcode::CallIndirect => unimplemented!(),
+
                 Opcode::Drop => {
                     // Probe the stack top to make sure there is a value there. We don't care what it is.
                     get_stack_top(stack, 1)?;
@@ -601,15 +615,68 @@ impl ExpressionExecutor {
                     a.rotate_right(u32::try_from(b % 32).unwrap())
                 })?,
 
+                Opcode::F32Abs => unary_op(stack, |a: f32| a.abs())?,
+                Opcode::F32Neg => unary_op(stack, |a: f32| -a)?,
+                Opcode::F32Ceil => unary_op(stack, |a: f32| a.ceil())?,
+                Opcode::F32Floor => unary_op(stack, |a: f32| a.floor())?,
+                Opcode::F32Trunc => unary_op(stack, |a: f32| a.trunc())?,
+                Opcode::F32Nearest => unary_op(stack, |a: f32| a.round())?,
+                Opcode::F32Sqrt => unary_op(stack, |a: f32| a.sqrt())?,
                 Opcode::F32Add => binary_op(stack, |a: f32, b: f32| a + b)?,
+                Opcode::F32Sub => binary_op(stack, |a: f32, b: f32| a - b)?,
+                Opcode::F32Mul => binary_op(stack, |a: f32, b: f32| a * b)?,
+                Opcode::F32Div => binary_op(stack, |a: f32, b: f32| a / b)?,
+                Opcode::F32Min => binary_op(stack, |a: f32, b: f32| a.min(b))?,
+                Opcode::F32Max => binary_op(stack, |a: f32, b: f32| a.max(b))?,
+                Opcode::F32CopySign => binary_op(stack, |a: f32, b: f32| a.copysign(b))?,
 
+                Opcode::F64Abs => unary_op(stack, |a: f64| a.abs())?,
+                Opcode::F64Neg => unary_op(stack, |a: f64| -a)?,
+                Opcode::F64Ceil => unary_op(stack, |a: f64| a.ceil())?,
+                Opcode::F64Floor => unary_op(stack, |a: f64| a.floor())?,
+                Opcode::F64Trunc => unary_op(stack, |a: f64| a.trunc())?,
+                Opcode::F64Nearest => unary_op(stack, |a: f64| a.round())?,
+                Opcode::F64Sqrt => unary_op(stack, |a: f64| a.sqrt())?,
                 Opcode::F64Add => binary_op(stack, |a: f64, b: f64| a + b)?,
+                Opcode::F64Sub => binary_op(stack, |a: f64, b: f64| a - b)?,
+                Opcode::F64Mul => binary_op(stack, |a: f64, b: f64| a * b)?,
+                Opcode::F64Div => binary_op(stack, |a: f64, b: f64| a / b)?,
+                Opcode::F64Min => binary_op(stack, |a: f64, b: f64| a.min(b))?,
+                Opcode::F64Max => binary_op(stack, |a: f64, b: f64| a.max(b))?,
+                Opcode::F64CopySign => binary_op(stack, |a: f64, b: f64| a.copysign(b))?,
 
-                _ => {
-                    return Err(anyhow!(
-                        "Instruction {:?} is not valid in constant expression",
-                        instruction
-                    ));
+                Opcode::I32WrapI64 => unary_op(stack, |a: u64| a as u32)?,
+                Opcode::I32TruncF32S => unary_op(stack, |a: f32| a as i32)?,
+                Opcode::I32TruncF32U => unary_op(stack, |a: f32| a as u32)?,
+                Opcode::I32TruncF64S => unary_op(stack, |a: f64| a as i32)?,
+                Opcode::I32TruncF64U => unary_op(stack, |a: f64| a as u32)?,
+                Opcode::I64ExtendI32S => unary_op(stack, |a: i32| a as i64)?,
+                Opcode::I64ExtendI32U => unary_op(stack, |a: u32| a as u64)?,
+                Opcode::I64TruncF32S => unary_op(stack, |a: f32| a as i64)?,
+                Opcode::I64TruncF32U => unary_op(stack, |a: f32| a as u64)?,
+                Opcode::I64TruncF64S => unary_op(stack, |a: f64| a as i64)?,
+                Opcode::I64TruncF64U => unary_op(stack, |a: f64| a as u64)?,
+                Opcode::F32ConvertI32S => unary_op(stack, |a: i32| a as f32)?,
+                Opcode::F32ConvertI32U => unary_op(stack, |a: u32| a as f32)?,
+                Opcode::F32ConvertI64S => unary_op(stack, |a: i64| a as f32)?,
+                Opcode::F32ConvertI64U => unary_op(stack, |a: u64| a as f32)?,
+                Opcode::F32DemoteF64 => unary_op(stack, |a: f64| a as f32)?,
+                Opcode::F64ConvertI32S => unary_op(stack, |a: i32| a as f64)?,
+                Opcode::F64ConvertI32U => unary_op(stack, |a: u32| a as f64)?,
+                Opcode::F64ConvertI64S => unary_op(stack, |a: i64| a as f64)?,
+                Opcode::F64ConvertI64U => unary_op(stack, |a: u64| a as f64)?,
+                Opcode::F64PromoteF32 => unary_op(stack, |a: f32| a as f64)?,
+                Opcode::I32ReinterpretF32 => {
+                    unary_op(stack, |a: f32| -> u32 { unsafe { std::mem::transmute(a) } })?
+                }
+                Opcode::I64ReinterpretF64 => {
+                    unary_op(stack, |a: f64| -> u64 { unsafe { std::mem::transmute(a) } })?
+                }
+                Opcode::F32ReinterpretI32 => {
+                    unary_op(stack, |a: i32| -> f32 { unsafe { std::mem::transmute(a) } })?
+                }
+                Opcode::F64ReinterpretI64 => {
+                    unary_op(stack, |a: i64| -> f64 { unsafe { std::mem::transmute(a) } })?
                 }
             }
         }
@@ -1106,11 +1173,81 @@ mod test {
             0x8000000000000000u64
         );
 
+        test_unary_opcode!(7.0f32, Opcode::F32Abs, 7.0f32);
+        test_unary_opcode!(-7.0f32, Opcode::F32Abs, 7.0f32);
+        test_unary_opcode!(7.0f32, Opcode::F32Neg, -7.0f32);
+        test_unary_opcode!(-7.0f32, Opcode::F32Neg, 7.0f32);
+        test_unary_opcode!(7.1f32, Opcode::F32Ceil, 8.0f32);
+        test_unary_opcode!(-7.1f32, Opcode::F32Ceil, -7.0f32);
+        test_unary_opcode!(7.1f32, Opcode::F32Floor, 7.0f32);
+        test_unary_opcode!(-7.1f32, Opcode::F32Floor, -8.0f32);
+        test_unary_opcode!(7.1f32, Opcode::F32Nearest, 7.0f32);
+        test_unary_opcode!(-7.1f32, Opcode::F32Nearest, -7.0f32);
+        test_unary_opcode!(64.0f32, Opcode::F32Sqrt, 8.0f32);
         test_binary_opcode!(7.0f32, 8.0f32, Opcode::F32Add, 15.0f32);
         test_binary_opcode!(7.0f32, -1.0f32, Opcode::F32Add, 6.0f32);
+        test_binary_opcode!(7.0f32, 8.0f32, Opcode::F32Sub, -1.0f32);
+        test_binary_opcode!(7.0f32, -1.0f32, Opcode::F32Sub, 8.0f32);
+        test_binary_opcode!(7.0f32, 8.0f32, Opcode::F32Mul, 56.0f32);
+        test_binary_opcode!(7.0f32, -1.0f32, Opcode::F32Mul, -7.0f32);
+        test_binary_opcode!(16.0f32, 8.0f32, Opcode::F32Div, 2.0f32);
+        test_binary_opcode!(7.0f32, -1.0f32, Opcode::F32Div, -7.0f32);
+        test_binary_opcode!(16.0f32, 8.0f32, Opcode::F32Min, 8.0f32);
+        test_binary_opcode!(16.0f32, 8.0f32, Opcode::F32Max, 16.0f32);
+        test_binary_opcode!(7.0f32, -1.0f32, Opcode::F32CopySign, -7.0f32);
+        test_binary_opcode!(7.0f32, 1.0f32, Opcode::F32CopySign, 7.0f32);
+        test_binary_opcode!(-7.0f32, 1.0f32, Opcode::F32CopySign, 7.0f32);
 
+        test_unary_opcode!(7.0f64, Opcode::F64Abs, 7.0f64);
+        test_unary_opcode!(-7.0f64, Opcode::F64Abs, 7.0f64);
+        test_unary_opcode!(7.0f64, Opcode::F64Neg, -7.0f64);
+        test_unary_opcode!(-7.0f64, Opcode::F64Neg, 7.0f64);
+        test_unary_opcode!(7.1f64, Opcode::F64Ceil, 8.0f64);
+        test_unary_opcode!(-7.1f64, Opcode::F64Ceil, -7.0f64);
+        test_unary_opcode!(7.1f64, Opcode::F64Floor, 7.0f64);
+        test_unary_opcode!(-7.1f64, Opcode::F64Floor, -8.0f64);
+        test_unary_opcode!(7.1f64, Opcode::F64Nearest, 7.0f64);
+        test_unary_opcode!(-7.1f64, Opcode::F64Nearest, -7.0f64);
+        test_unary_opcode!(64.0f64, Opcode::F64Sqrt, 8.0f64);
         test_binary_opcode!(7.0f64, 8.0f64, Opcode::F64Add, 15.0f64);
         test_binary_opcode!(7.0f64, -1.0f64, Opcode::F64Add, 6.0f64);
+        test_binary_opcode!(7.0f64, 8.0f64, Opcode::F64Sub, -1.0f64);
+        test_binary_opcode!(7.0f64, -1.0f64, Opcode::F64Sub, 8.0f64);
+        test_binary_opcode!(7.0f64, 8.0f64, Opcode::F64Mul, 56.0f64);
+        test_binary_opcode!(7.0f64, -1.0f64, Opcode::F64Mul, -7.0f64);
+        test_binary_opcode!(16.0f64, 8.0f64, Opcode::F64Div, 2.0f64);
+        test_binary_opcode!(7.0f64, -1.0f64, Opcode::F64Div, -7.0f64);
+        test_binary_opcode!(16.0f64, 8.0f64, Opcode::F64Min, 8.0f64);
+        test_binary_opcode!(16.0f64, 8.0f64, Opcode::F64Max, 16.0f64);
+        test_binary_opcode!(7.0f64, -1.0f64, Opcode::F64CopySign, -7.0f64);
+        test_binary_opcode!(7.0f64, 1.0f64, Opcode::F64CopySign, 7.0f64);
+        test_binary_opcode!(-7.0f64, 1.0f64, Opcode::F64CopySign, 7.0f64);
+
+        test_unary_opcode!(0xFFFFFFFF00110011u64, Opcode::I32WrapI64, 0x00110011u32);
+        test_unary_opcode!(-7.5f32, Opcode::I32TruncF32S, -7i32);
+        test_unary_opcode!(3000000000.0f32, Opcode::I32TruncF32U, 3000000000u32);
+        test_unary_opcode!(-7.5f64, Opcode::I32TruncF64S, -7i32);
+        test_unary_opcode!(3000000000.0f64, Opcode::I32TruncF64U, 3000000000u32);
+        test_unary_opcode!(-1i32, Opcode::I64ExtendI32S, -1i64);
+        test_unary_opcode!(-1i32, Opcode::I64ExtendI32U, 0xFFFFFFFFi64);
+        test_unary_opcode!(-7.5f32, Opcode::I64TruncF32S, -7i64);
+        test_unary_opcode!(3000000000.0f32, Opcode::I64TruncF32U, 3000000000u64);
+        test_unary_opcode!(-7.5f64, Opcode::I64TruncF64S, -7i64);
+        test_unary_opcode!(3000000000.0f64, Opcode::I64TruncF64U, 3000000000u64);
+        test_unary_opcode!(-1i32, Opcode::F32ConvertI32S, -1.0f32);
+        test_unary_opcode!(-1i32, Opcode::F32ConvertI32U, 4294967295.0f32);
+        test_unary_opcode!(-1i64, Opcode::F32ConvertI64S, -1.0f32);
+        test_unary_opcode!(-1i64, Opcode::F32ConvertI64U, 18446744073709551615.0f32);
+        test_unary_opcode!(-1f64, Opcode::F32DemoteF64, -1f32);
+        test_unary_opcode!(-1i32, Opcode::F64ConvertI32S, -1.0f64);
+        test_unary_opcode!(-1i32, Opcode::F64ConvertI32U, 4294967295.0f64);
+        test_unary_opcode!(-1i64, Opcode::F64ConvertI64S, -1.0f64);
+        test_unary_opcode!(-1i64, Opcode::F64ConvertI64U, 18446744073709551615.0f64);
+        test_unary_opcode!(-1f32, Opcode::F64PromoteF32, -1f64);
+        test_unary_opcode!(-1.0f32, Opcode::I32ReinterpretF32, 0xbf800000u32);
+        test_unary_opcode!(-1.0f64, Opcode::I64ReinterpretF64, 0xbff0000000000000u64);
+        test_unary_opcode!(0xbf800000u32, Opcode::F32ReinterpretI32, -1.0f32);
+        test_unary_opcode!(0xbff0000000000000u64, Opcode::F64ReinterpretI64, -1.0f64);
     }
 
     fn do_local_get<Store: ExpressionStore>(
