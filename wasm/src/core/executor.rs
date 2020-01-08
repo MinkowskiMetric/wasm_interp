@@ -211,25 +211,19 @@ impl ExpressionExecutor {
 
                 Opcode::MemorySize => {
                     let memory_idx = instruction.get_single_u32_as_usize_arg();
-                    let memory = store.get_memory(memory_idx)?;
-                    let memory = memory.borrow();
-
-                    let size = u32::try_from(memory.current_size()).unwrap();
+                    let size = store.get_memory_size(memory_idx)? as u32;
                     stack.push(size.into());
                 }
                 Opcode::MemoryGrow => {
                     let memory_idx = instruction.get_single_u32_as_usize_arg();
-                    let memory = store.get_memory(memory_idx)?;
-                    let memory = &mut memory.borrow_mut();
+                    let original_size = store.get_memory_size(memory_idx)? as u32;
 
                     let grow_by = get_stack_top(stack, 1)?[0];
                     let grow_by = u32::try_from(grow_by)?;
                     let grow_by = usize::try_from(grow_by).unwrap();
                     stack.pop();
 
-                    let original_size = u32::try_from(memory.current_size()).unwrap();
-
-                    if memory.grow_by(grow_by).is_ok() {
+                    if store.grow_memory_by(memory_idx, grow_by).is_ok() {
                         stack.push(original_size.into());
                     } else {
                         stack.push(StackEntry::from(-1i32));
@@ -1103,12 +1097,7 @@ mod test {
         store.enable_memory();
 
         static FIXED_DATA: [u8; 8] = [0x0d, 0xf0, 0xad, 0xba, 0x0d, 0xf0, 0xad, 0xba];
-        store
-            .get_memory(0)
-            .unwrap()
-            .borrow_mut()
-            .set_data(0, &FIXED_DATA)
-            .unwrap();
+        store.write_data(0, 0, &FIXED_DATA).unwrap();
 
         let mut expr_bytes = Vec::new();
         write_const_instruction(&mut expr_bytes, 0u32.into());
@@ -1169,18 +1158,8 @@ mod test {
                 }
             }
 
-            store
-                .get_memory(0)
-                .unwrap()
-                .borrow_mut()
-                .set_data(128, &unsigned_bytes)
-                .unwrap();
-            store
-                .get_memory(0)
-                .unwrap()
-                .borrow_mut()
-                .set_data(256, &signed_bytes)
-                .unwrap();
+            store.write_data(0, 128, &unsigned_bytes).unwrap();
+            store.write_data(0, 256, &signed_bytes).unwrap();
 
             let mut expr_bytes = Vec::new();
             write_const_instruction(&mut expr_bytes, 128u32.into());
@@ -1230,18 +1209,8 @@ mod test {
                 }
             }
 
-            store
-                .get_memory(0)
-                .unwrap()
-                .borrow_mut()
-                .set_data(128, &unsigned_bytes)
-                .unwrap();
-            store
-                .get_memory(0)
-                .unwrap()
-                .borrow_mut()
-                .set_data(256, &signed_bytes)
-                .unwrap();
+            store.write_data(0, 128, &unsigned_bytes).unwrap();
+            store.write_data(0, 256, &signed_bytes).unwrap();
 
             let mut expr_bytes = Vec::new();
             write_const_instruction(&mut expr_bytes, 128u32.into());
@@ -1279,12 +1248,7 @@ mod test {
         ] {
             let set_bytes: [u8; 8] = [0xff; 8];
 
-            store
-                .get_memory(0)
-                .unwrap()
-                .borrow_mut()
-                .set_data(128, &set_bytes)
-                .unwrap();
+            store.write_data(0, 128, &set_bytes).unwrap();
 
             let mut expr_bytes = Vec::new();
             write_const_instruction(&mut expr_bytes, 128u32.into());
@@ -1300,12 +1264,7 @@ mod test {
             assert_eq!(stack.working_count(), 0);
 
             let mut check_bytes: [u8; 8] = [0xff; 8];
-            store
-                .get_memory(0)
-                .unwrap()
-                .borrow()
-                .get_data(128, &mut check_bytes)
-                .unwrap();
+            store.read_data(0, 128, &mut check_bytes).unwrap();
 
             for i in 0..8 {
                 if i < *byte_count {
@@ -1324,12 +1283,7 @@ mod test {
         ] {
             let set_bytes: [u8; 8] = [0xff; 8];
 
-            store
-                .get_memory(0)
-                .unwrap()
-                .borrow_mut()
-                .set_data(128, &set_bytes)
-                .unwrap();
+            store.write_data(0, 128, &set_bytes).unwrap();
 
             let mut expr_bytes = Vec::new();
             write_const_instruction(&mut expr_bytes, 128u32.into());
@@ -1345,12 +1299,7 @@ mod test {
             assert_eq!(stack.working_count(), 0);
 
             let mut check_bytes: [u8; 8] = [0xff; 8];
-            store
-                .get_memory(0)
-                .unwrap()
-                .borrow()
-                .get_data(128, &mut check_bytes)
-                .unwrap();
+            store.read_data(0, 128, &mut check_bytes).unwrap();
 
             for i in 0..8 {
                 if i < *byte_count {
@@ -1384,7 +1333,7 @@ mod test {
         assert_eq!(stack.working_top(1)[0], 1u32.into());
         stack.pop();
 
-        assert_eq!(store.get_memory(0).unwrap().borrow().current_size(), 2);
+        assert_eq!(store.get_memory_size(0).ok(), Some(2));
 
         let mut expr_bytes = Vec::new();
         write_const_instruction(&mut expr_bytes, 10i32.into());
@@ -1398,6 +1347,6 @@ mod test {
         assert_eq!(stack.working_top(1)[0], StackEntry::from(-1i32));
         stack.pop();
 
-        assert_eq!(store.get_memory(0).unwrap().borrow().current_size(), 2);
+        assert_eq!(store.get_memory_size(0).ok(), Some(2));
     }
 }

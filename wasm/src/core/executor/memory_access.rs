@@ -136,8 +136,6 @@ pub fn mem_load<
     func: FuncType,
 ) -> Result<()> {
     let (mem_idx, offset) = instruction.get_pair_u32_as_usize_arg();
-    let memory = store.get_memory(mem_idx)?;
-    let memory = memory.borrow();
 
     let base_address = get_stack_top(stack, 1)?[0];
     let base_address = usize::try_from(u32::try_from(base_address)?).unwrap();
@@ -149,7 +147,7 @@ pub fn mem_load<
     // size. Which is a bit annoying, but not very.
     let mut bytes: GenericArray<u8, IntType::ArrayLength> =
         unsafe { std::mem::MaybeUninit::uninit().assume_init() };
-    memory.get_data(final_address, &mut bytes)?;
+    store.read_data(mem_idx, final_address, &mut bytes)?;
 
     let int_value = IntType::from_bytes(bytes);
     let ret_value = func(int_value);
@@ -171,8 +169,6 @@ pub fn mem_store<
     func: FuncType,
 ) -> Result<()> {
     let (mem_idx, offset) = instruction.get_pair_u32_as_usize_arg();
-    let memory = store.get_memory(mem_idx)?;
-    let memory = &mut memory.borrow_mut();
 
     let value = get_stack_top(stack, 1)?[0];
     let value = ValueType::try_from(value)?;
@@ -185,7 +181,7 @@ pub fn mem_store<
     let final_address = base_address + offset;
 
     let bytes = func(value).to_bytes();
-    memory.set_data(final_address, &bytes)?;
+    store.write_data(mem_idx, final_address, &bytes)?;
 
     Ok(())
 }
