@@ -1,14 +1,17 @@
-use std::{cell::RefCell, convert::TryFrom, rc::Rc};
+use std::convert::TryFrom;
 
 mod memory_access;
 mod stack_ops;
+mod store_access;
 
-use crate::core::{stack_entry::StackEntry, Memory, Stack};
+use crate::core::{stack_entry::StackEntry, Stack};
 use crate::parser::{self, Opcode};
 use anyhow::{anyhow, Result};
 
 use memory_access::{mem_load, mem_store};
 use stack_ops::{binary_boolean_op, binary_op, get_stack_top, unary_boolean_op, unary_op};
+
+pub use store_access::{ConstantExpressionStore, ExpressionStore};
 
 pub struct ConstantExpressionExecutor {}
 pub struct ExpressionExecutor {}
@@ -16,16 +19,6 @@ pub struct ExpressionExecutor {}
 static CONSTANT_EXPRESSION_EXECUTOR_INSTANCE: ConstantExpressionExecutor =
     ConstantExpressionExecutor {};
 static EXPRESSION_EXECUTOR_INSTANCE: ExpressionExecutor = ExpressionExecutor {};
-
-pub trait ConstantExpressionStore {
-    fn get_global_value(&self, idx: usize) -> Result<StackEntry>;
-}
-
-pub trait ExpressionStore: ConstantExpressionStore {
-    fn set_global_value(&mut self, idx: usize, value: StackEntry) -> Result<()>;
-
-    fn get_memory(&self, idx: usize) -> Result<Rc<RefCell<Memory>>>;
-}
 
 impl ConstantExpressionExecutor {
     pub fn instance() -> &'static Self {
@@ -442,51 +435,12 @@ impl ExpressionExecutor {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-
     use std::convert::TryInto;
 
-    struct TestStore {
-        memory: Rc<RefCell<Memory>>,
-        memory_enabled: bool,
-    }
+    mod test_store;
 
-    impl TestStore {
-        pub fn new() -> Self {
-            Self {
-                memory: Rc::new(RefCell::new(Memory::new_from_bounds(1, Some(3)))),
-                memory_enabled: false,
-            }
-        }
-
-        pub fn enable_memory(&mut self) {
-            self.memory_enabled = true;
-        }
-    }
-
-    impl ConstantExpressionStore for TestStore {
-        fn get_global_value(&self, _idx: usize) -> Result<StackEntry> {
-            Err(anyhow!("Global value not present in test store"))
-        }
-    }
-
-    impl ExpressionStore for TestStore {
-        fn set_global_value(&mut self, _idx: usize, _value: StackEntry) -> Result<()> {
-            Err(anyhow!("Global value not present in test store"))
-        }
-
-        fn get_memory(&self, idx: usize) -> Result<Rc<RefCell<Memory>>> {
-            if self.memory_enabled {
-                if idx == 0 {
-                    Ok(self.memory.clone())
-                } else {
-                    Err(anyhow!("Memory out of range"))
-                }
-            } else {
-                Err(anyhow!("Memory not present in store"))
-            }
-        }
-    }
+    use super::*;
+    use test_store::*;
 
     fn write_leb(expr_bytes: &mut Vec<u8>, val: u64, signed: bool) {
         let mut encoded_bytes: [u8; 10] = [
