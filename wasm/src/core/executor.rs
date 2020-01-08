@@ -51,6 +51,16 @@ fn unary_op<
     Ok(())
 }
 
+fn unary_boolean_op<
+    ParamType: Sized + TryFrom<StackEntry, Error = anyhow::Error>,
+    Func: Fn(ParamType) -> bool,
+>(
+    stack: &mut Stack,
+    func: Func,
+) -> Result<()> {
+    unary_op(stack, |p: ParamType| if func(p) { 1u32 } else { 0u32 })
+}
+
 fn binary_op<
     ParamType: Sized + TryFrom<StackEntry, Error = anyhow::Error>,
     RetType: Into<StackEntry>,
@@ -66,6 +76,19 @@ fn binary_op<
     let ret = func(args[0].try_into()?, args[1].try_into()?);
     stack.push(ret.into());
     Ok(())
+}
+
+fn binary_boolean_op<
+    ParamType: Sized + TryFrom<StackEntry, Error = anyhow::Error>,
+    Func: Fn(ParamType, ParamType) -> bool,
+>(
+    stack: &mut Stack,
+    func: Func,
+) -> Result<()> {
+    binary_op(
+        stack,
+        |p1: ParamType, p2: ParamType| if func(p1, p2) { 1u32 } else { 0u32 },
+    )
 }
 
 trait LEByteConvert {
@@ -498,6 +521,44 @@ impl ExpressionExecutor {
                     stack.push(instruction.get_single_f64_arg().into());
                 }
 
+                Opcode::I32Eqz => unary_boolean_op(stack, |a: u32| a == 0)?,
+                Opcode::I32Eq => binary_boolean_op(stack, |a: u32, b| a == b)?,
+                Opcode::I32Ne => binary_boolean_op(stack, |a: u32, b| a != b)?,
+                Opcode::I32LtS => binary_boolean_op(stack, |a: i32, b| a < b)?,
+                Opcode::I32LtU => binary_boolean_op(stack, |a: u32, b| a < b)?,
+                Opcode::I32GtS => binary_boolean_op(stack, |a: i32, b| a > b)?,
+                Opcode::I32GtU => binary_boolean_op(stack, |a: u32, b| a > b)?,
+                Opcode::I32LeS => binary_boolean_op(stack, |a: i32, b| a <= b)?,
+                Opcode::I32LeU => binary_boolean_op(stack, |a: u32, b| a <= b)?,
+                Opcode::I32GeS => binary_boolean_op(stack, |a: i32, b| a >= b)?,
+                Opcode::I32GeU => binary_boolean_op(stack, |a: u32, b| a >= b)?,
+
+                Opcode::I64Eqz => unary_boolean_op(stack, |a: u64| a == 0)?,
+                Opcode::I64Eq => binary_boolean_op(stack, |a: u64, b| a == b)?,
+                Opcode::I64Ne => binary_boolean_op(stack, |a: u64, b| a != b)?,
+                Opcode::I64LtS => binary_boolean_op(stack, |a: i64, b| a < b)?,
+                Opcode::I64LtU => binary_boolean_op(stack, |a: u64, b| a < b)?,
+                Opcode::I64GtS => binary_boolean_op(stack, |a: i64, b| a > b)?,
+                Opcode::I64GtU => binary_boolean_op(stack, |a: u64, b| a > b)?,
+                Opcode::I64LeS => binary_boolean_op(stack, |a: i64, b| a <= b)?,
+                Opcode::I64LeU => binary_boolean_op(stack, |a: u64, b| a <= b)?,
+                Opcode::I64GeS => binary_boolean_op(stack, |a: i64, b| a >= b)?,
+                Opcode::I64GeU => binary_boolean_op(stack, |a: u64, b| a >= b)?,
+
+                Opcode::F32Eq => binary_boolean_op(stack, |a: f32, b| a == b)?,
+                Opcode::F32Ne => binary_boolean_op(stack, |a: f32, b| a != b)?,
+                Opcode::F32Lt => binary_boolean_op(stack, |a: f32, b| a < b)?,
+                Opcode::F32Gt => binary_boolean_op(stack, |a: f32, b| a > b)?,
+                Opcode::F32Le => binary_boolean_op(stack, |a: f32, b| a <= b)?,
+                Opcode::F32Ge => binary_boolean_op(stack, |a: f32, b| a >= b)?,
+
+                Opcode::F64Eq => binary_boolean_op(stack, |a: f64, b| a == b)?,
+                Opcode::F64Ne => binary_boolean_op(stack, |a: f64, b| a != b)?,
+                Opcode::F64Lt => binary_boolean_op(stack, |a: f64, b| a < b)?,
+                Opcode::F64Gt => binary_boolean_op(stack, |a: f64, b| a > b)?,
+                Opcode::F64Le => binary_boolean_op(stack, |a: f64, b| a <= b)?,
+                Opcode::F64Ge => binary_boolean_op(stack, |a: f64, b| a >= b)?,
+
                 Opcode::I32Clz => unary_op(stack, |a: u32| u32::from(a.leading_zeros()))?,
                 Opcode::I32Ctz => unary_op(stack, |a: u32| u32::from(a.trailing_zeros()))?,
                 Opcode::I32Popcnt => unary_op(stack, |a: u32| u32::from(a.count_ones()))?,
@@ -905,6 +966,78 @@ mod test {
         // TODOTODOTODO - should test for integers that are too big for the opcodes to make sure they're handled properly.
         // I haven't written that test because currently it panics in the instruction accumulator which is obviously not the
         // right thing to do.
+
+        test_unary_opcode!(7i32, Opcode::I32Eqz, 0u32);
+        test_unary_opcode!(0i32, Opcode::I32Eqz, 1u32);
+        test_binary_opcode!(7i32, 0i32, Opcode::I32Eq, 0u32);
+        test_binary_opcode!(7i32, 7i32, Opcode::I32Eq, 1u32);
+        test_binary_opcode!(7i32, 0i32, Opcode::I32Ne, 1u32);
+        test_binary_opcode!(7i32, 7i32, Opcode::I32Ne, 0u32);
+        test_binary_opcode!(-1i32, 0i32, Opcode::I32LtS, 1u32);
+        test_binary_opcode!(0i32, -1i32, Opcode::I32LtS, 0u32);
+        test_binary_opcode!(-1i32, 0i32, Opcode::I32LtU, 0u32);
+        test_binary_opcode!(0i32, -1i32, Opcode::I32LtU, 1u32);
+        test_binary_opcode!(-1i32, 0i32, Opcode::I32GtS, 0u32);
+        test_binary_opcode!(0i32, -1i32, Opcode::I32GtS, 1u32);
+        test_binary_opcode!(-1i32, 0i32, Opcode::I32GtU, 1u32);
+        test_binary_opcode!(0i32, -1i32, Opcode::I32GtU, 0u32);
+        test_binary_opcode!(-1i32, 0i32, Opcode::I32LeS, 1u32);
+        test_binary_opcode!(0i32, -1i32, Opcode::I32LeS, 0u32);
+        test_binary_opcode!(-1i32, 0i32, Opcode::I32LeU, 0u32);
+        test_binary_opcode!(0i32, -1i32, Opcode::I32LeU, 1u32);
+        test_binary_opcode!(-1i32, 0i32, Opcode::I32GeS, 0u32);
+        test_binary_opcode!(0i32, -1i32, Opcode::I32GeS, 1u32);
+        test_binary_opcode!(-1i32, 0i32, Opcode::I32GeU, 1u32);
+        test_binary_opcode!(0i32, -1i32, Opcode::I32GeU, 0u32);
+
+        test_unary_opcode!(7i64, Opcode::I64Eqz, 0u32);
+        test_unary_opcode!(0i64, Opcode::I64Eqz, 1u32);
+        test_binary_opcode!(7i64, 0i64, Opcode::I64Eq, 0u32);
+        test_binary_opcode!(7i64, 7i64, Opcode::I64Eq, 1u32);
+        test_binary_opcode!(7i64, 0i64, Opcode::I64Ne, 1u32);
+        test_binary_opcode!(7i64, 7i64, Opcode::I64Ne, 0u32);
+        test_binary_opcode!(-1i64, 0i64, Opcode::I64LtS, 1u32);
+        test_binary_opcode!(0i64, -1i64, Opcode::I64LtS, 0u32);
+        test_binary_opcode!(-1i64, 0i64, Opcode::I64LtU, 0u32);
+        test_binary_opcode!(0i64, -1i64, Opcode::I64LtU, 1u32);
+        test_binary_opcode!(-1i64, 0i64, Opcode::I64GtS, 0u32);
+        test_binary_opcode!(0i64, -1i64, Opcode::I64GtS, 1u32);
+        test_binary_opcode!(-1i64, 0i64, Opcode::I64GtU, 1u32);
+        test_binary_opcode!(0i64, -1i64, Opcode::I64GtU, 0u32);
+        test_binary_opcode!(-1i64, 0i64, Opcode::I64LeS, 1u32);
+        test_binary_opcode!(0i64, -1i64, Opcode::I64LeS, 0u32);
+        test_binary_opcode!(-1i64, 0i64, Opcode::I64LeU, 0u32);
+        test_binary_opcode!(0i64, -1i64, Opcode::I64LeU, 1u32);
+        test_binary_opcode!(-1i64, 0i64, Opcode::I64GeS, 0u32);
+        test_binary_opcode!(0i64, -1i64, Opcode::I64GeS, 1u32);
+        test_binary_opcode!(-1i64, 0i64, Opcode::I64GeU, 1u32);
+        test_binary_opcode!(0i64, -1i64, Opcode::I64GeU, 0u32);
+
+        test_binary_opcode!(7.0f32, 0.0f32, Opcode::F32Eq, 0u32);
+        test_binary_opcode!(7.0f32, 7.0f32, Opcode::F32Eq, 1u32);
+        test_binary_opcode!(7.0f32, 0.0f32, Opcode::F32Ne, 1u32);
+        test_binary_opcode!(7.0f32, 7.0f32, Opcode::F32Ne, 0u32);
+        test_binary_opcode!(-1.0f32, 0.0f32, Opcode::F32Lt, 1u32);
+        test_binary_opcode!(0.0f32, -1.0f32, Opcode::F32Lt, 0u32);
+        test_binary_opcode!(-1.0f32, 0.0f32, Opcode::F32Gt, 0u32);
+        test_binary_opcode!(0.0f32, -1.0f32, Opcode::F32Gt, 1u32);
+        test_binary_opcode!(-1.0f32, 0.0f32, Opcode::F32Le, 1u32);
+        test_binary_opcode!(0.0f32, -1.0f32, Opcode::F32Le, 0u32);
+        test_binary_opcode!(-1.0f32, 0.0f32, Opcode::F32Ge, 0u32);
+        test_binary_opcode!(0.0f32, -1.0f32, Opcode::F32Ge, 1u32);
+
+        test_binary_opcode!(7.0f64, 0.0f64, Opcode::F64Eq, 0u32);
+        test_binary_opcode!(7.0f64, 7.0f64, Opcode::F64Eq, 1u32);
+        test_binary_opcode!(7.0f64, 0.0f64, Opcode::F64Ne, 1u32);
+        test_binary_opcode!(7.0f64, 7.0f64, Opcode::F64Ne, 0u32);
+        test_binary_opcode!(-1.0f64, 0.0f64, Opcode::F64Lt, 1u32);
+        test_binary_opcode!(0.0f64, -1.0f64, Opcode::F64Lt, 0u32);
+        test_binary_opcode!(-1.0f64, 0.0f64, Opcode::F64Gt, 0u32);
+        test_binary_opcode!(0.0f64, -1.0f64, Opcode::F64Gt, 1u32);
+        test_binary_opcode!(-1.0f64, 0.0f64, Opcode::F64Le, 1u32);
+        test_binary_opcode!(0.0f64, -1.0f64, Opcode::F64Le, 0u32);
+        test_binary_opcode!(-1.0f64, 0.0f64, Opcode::F64Ge, 0u32);
+        test_binary_opcode!(0.0f64, -1.0f64, Opcode::F64Ge, 1u32);
 
         test_unary_opcode!(7i32, Opcode::I32Clz, 29u32);
         test_unary_opcode!(7i32, Opcode::I32Ctz, 0u32);
