@@ -15,17 +15,16 @@ pub fn split_page_from_address(address: usize) -> (usize, usize) {
 // We allocate memory in pages. By having individual pages, it
 // simplifies the lookup logic whilst keeping the grow time simple
 pub struct MemoryPage {
-    // Rust makes this super difficult to do because making a boxed array requires you to allocate
-    // the array on the stack and then clone it into the box. Using a vector is annoying because
-    // you need to check the size
-    bytes: Vec<u8>,
+    bytes: Box<[u8]>,
 }
 
 impl MemoryPage {
     pub fn new() -> Self {
         let mut bytes: Vec<u8> = Vec::new();
         bytes.resize(WASM_PAGE_SIZE_IN_BYTES, 0);
-        MemoryPage { bytes }
+        MemoryPage {
+            bytes: bytes.into_boxed_slice(),
+        }
     }
 }
 
