@@ -14,7 +14,8 @@ mod table;
 pub use callable::{Callable, WasmExprCallable};
 pub use core_types::*;
 pub use executor::{
-    ConstantExpressionExecutor, ConstantExpressionStore, ExpressionExecutor, ExpressionStore,
+    CellRefMutType, CellRefType, ConstantExpressionExecutor, ConstantExpressionStore,
+    ExpressionExecutor, ExpressionStore, LifetimeToRef, RefMutType, RefType,
 };
 pub use global::Global;
 pub use memory::Memory;

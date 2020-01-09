@@ -11,7 +11,10 @@ use anyhow::{anyhow, Result};
 use memory_access::{mem_load, mem_store};
 use stack_ops::{binary_boolean_op, binary_op, get_stack_top, unary_boolean_op, unary_op};
 
-pub use store_access::{ConstantExpressionStore, ExpressionStore};
+pub use store_access::{
+    CellRefMutType, CellRefType, ConstantExpressionStore, ExpressionStore, LifetimeToRef,
+    RefMutType, RefType,
+};
 
 pub struct ConstantExpressionExecutor {}
 pub struct ExpressionExecutor {}

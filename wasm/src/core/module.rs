@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fs::File;
@@ -8,8 +8,9 @@ use std::io::Read;
 use std::rc::Rc;
 
 use crate::core::{
-    self, stack_entry::StackEntry, Callable, ConstantExpressionExecutor, ConstantExpressionStore,
-    ExpressionStore, Global, Memory, Stack, Table,
+    self, stack_entry::StackEntry, Callable, CellRefMutType, CellRefType,
+    ConstantExpressionExecutor, ConstantExpressionStore, ExpressionStore, Global, Memory, Stack,
+    Table,
 };
 use crate::parser::InstructionSource;
 use crate::reader::{ModuleBuilder, ReaderUtil, ScopedReader, TypeReader};
@@ -433,9 +434,11 @@ impl Module {
 }
 
 impl ConstantExpressionStore for Module {
-    fn get_global_value(&self, idx: usize) -> Result<StackEntry> {
+    type GlobalRef = CellRefType<Global>;
+
+    fn global_idx<'a>(&'a self, idx: usize) -> Result<Ref<'a, Global>> {
         if idx < self.globals.len() {
-            Ok(self.globals[idx].borrow().get_value().clone())
+            Ok(self.globals[idx].borrow())
         } else {
             Err(anyhow!("Global index out of range"))
         }
@@ -443,17 +446,29 @@ impl ConstantExpressionStore for Module {
 }
 
 impl ExpressionStore for Module {
-    fn set_global_value(&mut self, idx: usize, value: StackEntry) -> Result<()> {
+    type GlobalRefMut = CellRefMutType<Global>;
+    type MemoryRef = CellRefType<Memory>;
+    type MemoryRefMut = CellRefMutType<Memory>;
+
+    fn global_idx_mut<'a>(&'a mut self, idx: usize) -> Result<RefMut<'a, Global>> {
         if idx < self.globals.len() {
-            self.globals[idx].borrow_mut().set_value(value)
+            Ok(self.globals[idx].borrow_mut())
         } else {
             Err(anyhow!("Global index out of range"))
         }
     }
 
-    fn get_memory(&self, idx: usize) -> Result<Rc<RefCell<Memory>>> {
+    fn mem_idx<'a>(&'a self, idx: usize) -> Result<Ref<'a, Memory>> {
         if idx < self.memories.len() {
-            Ok(self.memories[idx].clone())
+            Ok(self.memories[idx].borrow())
+        } else {
+            Err(anyhow!("Memory index out of range"))
+        }
+    }
+
+    fn mem_idx_mut<'a>(&'a mut self, idx: usize) -> Result<RefMut<'a, Memory>> {
+        if idx < self.memories.len() {
+            Ok(self.memories[idx].borrow_mut())
         } else {
             Err(anyhow!("Memory index out of range"))
         }
