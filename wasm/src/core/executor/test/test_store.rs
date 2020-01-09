@@ -1,6 +1,9 @@
 use anyhow::{anyhow, Result};
 
-use super::super::{ConstantExpressionStore, ExpressionStore, RefMutType, RefType};
+use super::super::{
+    store_access::{RefMutType, RefType},
+    ConstantExpressionStore, ExpressionStore,
+};
 use crate::core::{Global, Memory};
 
 pub struct TestStore {

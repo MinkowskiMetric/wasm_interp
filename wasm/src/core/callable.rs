@@ -1,4 +1,4 @@
-use crate::core::{Expr, ExpressionExecutor, ExpressionStore, Func, FuncType, Locals, Stack};
+use crate::core::{execute_expression, Expr, ExpressionStore, Func, FuncType, Locals, Stack};
 use anyhow::Result;
 
 #[derive(Debug)]
@@ -42,7 +42,7 @@ impl WasmExprCallable {
         stack.push_frame(0, 0);
 
         // Now execute the function on the stack
-        let result = ExpressionExecutor::instance().execute(&self.expr, stack, store);
+        let result = execute_expression(&self.expr, stack, store);
 
         // Pop the function frame off the stack
         stack.pop_frame(0);
