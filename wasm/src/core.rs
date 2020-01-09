@@ -13,14 +13,12 @@ mod table;
 
 pub use callable::{Callable, WasmExprCallable};
 pub use core_types::*;
-pub use executor::{
-    CellRefMutType, CellRefType, ConstantExpressionExecutor, ConstantExpressionStore,
-    ExpressionExecutor, ExpressionStore, LifetimeToRef, RefMutType, RefType,
-};
+pub use executor::{evaluate_constant_expression, execute_expression, store_access};
 pub use global::Global;
 pub use memory::Memory;
 pub use module::{ExportValue, Module, RawModule};
 pub use resolver::{EmptyResolver, Resolver};
 pub use section::SectionType;
 pub use stack::Stack;
+pub use store_access::{ConstantExpressionStore, ExpressionStore};
 pub use table::Table;

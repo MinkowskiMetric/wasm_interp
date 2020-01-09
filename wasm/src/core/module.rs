@@ -8,9 +8,10 @@ use std::io::Read;
 use std::rc::Rc;
 
 use crate::core::{
-    self, stack_entry::StackEntry, Callable, CellRefMutType, CellRefType,
-    ConstantExpressionExecutor, ConstantExpressionStore, ExpressionStore, Global, Memory, Stack,
-    Table,
+    self, evaluate_constant_expression,
+    stack_entry::StackEntry,
+    store_access::{CellRefMutType, CellRefType},
+    Callable, ConstantExpressionStore, ExpressionStore, Global, Memory, Stack, Table,
 };
 use crate::parser::InstructionSource;
 use crate::reader::{ModuleBuilder, ReaderUtil, ScopedReader, TypeReader};
@@ -254,13 +255,12 @@ impl Module {
         Ok(())
     }
 
-    fn add_globals<Iter: Iterator<Item = core::GlobalDef>>(&mut self, globals: Iter) -> Result<()> {
+    fn add_globals(&mut self, globals: impl Iterator<Item = core::GlobalDef>) -> Result<()> {
         for global in globals {
             let global_type = global.global_type().clone();
             let init_expr = global.init_expr();
 
-            let results = ConstantExpressionExecutor::instance()
-                .execute_constant_expression(init_expr, self, 1)?;
+            let results = evaluate_constant_expression(init_expr, self, 1)?;
             let global = Global::new(global_type, results[0])?;
 
             self.globals.push(Rc::new(RefCell::new(global)));
@@ -383,9 +383,8 @@ impl Module {
         Ok(())
     }
 
-    fn evaluate_offset_expression<E: InstructionSource>(&self, expr: &E) -> Result<usize> {
-        let result =
-            ConstantExpressionExecutor::instance().execute_constant_expression(expr, self, 1)?;
+    fn evaluate_offset_expression(&self, expr: &impl InstructionSource) -> Result<usize> {
+        let result = evaluate_constant_expression(expr, self, 1)?;
 
         match result[0] {
             StackEntry::I32Entry(i) => Ok(usize::try_from(i).unwrap()),
