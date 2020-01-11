@@ -1,7 +1,7 @@
 use crate::parser::InstructionSource;
 use anyhow::{anyhow, Result};
-use num_enum::TryFromPrimitive;
-use std::convert::TryInto;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use std::convert::{TryFrom, TryInto};
 
 #[derive(Debug, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
@@ -18,6 +18,54 @@ impl ValueType {
         match byte.try_into() {
             Ok(v) => Ok(v),
             _ => Err(anyhow!("Invalid value type byte 0x{:02x}", byte)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum BlockType {
+    None,
+    F64 = 0x7C,
+    F32 = 0x7D,
+    I64 = 0x7E,
+    I32 = 0x7F,
+}
+
+impl BlockType {
+    pub fn from_byte(byte: u8) -> Result<Self> {
+        match byte.try_into() {
+            Ok(v) => Ok(v),
+            _ => Err(anyhow!("Invalid block type byte 0x{:02x}", byte)),
+        }
+    }
+}
+
+impl From<ValueType> for BlockType {
+    fn from(val: ValueType) -> BlockType {
+        match val {
+            ValueType::F64 => BlockType::F64,
+            ValueType::F32 => BlockType::F32,
+            ValueType::I64 => BlockType::I64,
+            ValueType::I32 => BlockType::I32,
+        }
+    }
+}
+
+impl TryFrom<BlockType> for ValueType {
+    type Error = anyhow::Error;
+
+    fn try_from(block_type: BlockType) -> Result<ValueType> {
+        match block_type {
+            BlockType::F64 => Ok(ValueType::F64),
+            BlockType::F32 => Ok(ValueType::F32),
+            BlockType::I64 => Ok(ValueType::I64),
+            BlockType::I32 => Ok(ValueType::I32),
+
+            _ => Err(anyhow!(
+                "Cannot convert value type {:?} to BlockType",
+                block_type
+            )),
         }
     }
 }

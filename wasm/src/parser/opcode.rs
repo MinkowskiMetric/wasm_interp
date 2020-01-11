@@ -2,7 +2,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::convert::TryInto;
 use std::io::{Error, ErrorKind, Result};
 
-#[derive(Debug, Clone, PartialEq, TryFromPrimitive, IntoPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub enum Opcode {
     Unreachable = 0x00,

@@ -10,9 +10,10 @@ pub use store_access::{ConstantExpressionStore, ExpressionStore};
 
 #[cfg(test)]
 mod test {
-    mod instruction_generator;
     #[macro_use]
     mod instruction_test_helpers;
+    mod control_instruction_tests;
+    mod instruction_generator;
     mod instruction_tests;
     mod test_store;
 }
