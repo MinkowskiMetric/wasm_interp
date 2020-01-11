@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 
-use crate::core::{stack_entry::StackEntry, Stack};
-use crate::parser::{self, Opcode};
+use crate::core::{stack_entry::StackEntry, BlockType, Stack};
+use crate::parser::{Instruction, InstructionSource, Opcode};
 use anyhow::{anyhow, Result};
 
 use super::memory_access::{mem_load, mem_store};
@@ -12,8 +12,8 @@ pub use super::store_access::{
     RefMutType, RefType,
 };
 
-pub fn execute_single_constant_instruction(
-    instruction: parser::Instruction,
+fn execute_single_constant_instruction(
+    instruction: Instruction,
     stack: &mut Stack,
     store: &impl ConstantExpressionStore,
 ) -> Result<()> {
@@ -47,25 +47,31 @@ pub fn execute_single_constant_instruction(
     Ok(())
 }
 
-pub fn execute_single_instruction(
-    instruction: parser::Instruction,
+#[derive(Debug, Clone, PartialEq)]
+enum InstructionResult {
+    Done,
+    ControlChange,
+}
+
+fn execute_single_instruction(
+    instruction: &Instruction,
     stack: &mut Stack,
     store: &mut impl ExpressionStore,
-) -> Result<()> {
+) -> Result<InstructionResult> {
     match instruction.opcode() {
         Opcode::Unreachable => return Err(anyhow!("Unreachable opcode")),
         Opcode::Nop => {}
-        Opcode::Block => unimplemented!(),
-        Opcode::Loop => unimplemented!(),
-        Opcode::If => unimplemented!(),
+        Opcode::Block => return Ok(InstructionResult::ControlChange),
+        Opcode::Loop => return Ok(InstructionResult::ControlChange),
+        Opcode::If => return Ok(InstructionResult::ControlChange),
         Opcode::Else => panic!("Else opcode should not pass through opcode iterator"),
         Opcode::End => panic!("End opcode should not pass through opcode iterator"),
-        Opcode::Br => unimplemented!(),
-        Opcode::BrIf => unimplemented!(),
-        Opcode::BrTable => unimplemented!(),
-        Opcode::Return => unimplemented!(),
-        Opcode::Call => unimplemented!(),
-        Opcode::CallIndirect => unimplemented!(),
+        Opcode::Br => return Ok(InstructionResult::ControlChange),
+        Opcode::BrIf => return Ok(InstructionResult::ControlChange),
+        Opcode::BrTable => return Ok(InstructionResult::ControlChange),
+        Opcode::Return => return Ok(InstructionResult::ControlChange),
+        Opcode::Call => return Ok(InstructionResult::ControlChange),
+        Opcode::CallIndirect => return Ok(InstructionResult::ControlChange),
 
         Opcode::Drop => {
             // Probe the stack top to make sure there is a value there. We don't care what it is.
@@ -386,11 +392,12 @@ pub fn execute_single_instruction(
             unary_op(stack, |a: i64| -> f64 { unsafe { std::mem::transmute(a) } })?
         }
     }
-    Ok(())
+
+    Ok(InstructionResult::Done)
 }
 
 pub fn execute_constant_expression(
-    expr: &impl parser::InstructionSource,
+    expr: &impl InstructionSource,
     stack: &mut Stack,
     store: &impl ConstantExpressionStore,
 ) -> Result<()> {
@@ -400,19 +407,8 @@ pub fn execute_constant_expression(
     Ok(())
 }
 
-pub fn execute_expression(
-    expr: &impl parser::InstructionSource,
-    stack: &mut Stack,
-    store: &mut impl ExpressionStore,
-) -> Result<()> {
-    for instruction in expr.iter() {
-        execute_single_instruction(instruction?, stack, store)?;
-    }
-    Ok(())
-}
-
 pub fn evaluate_constant_expression(
-    expr: &impl parser::InstructionSource,
+    expr: &impl InstructionSource,
     store: &impl ConstantExpressionStore,
     arity: usize,
 ) -> Result<Vec<StackEntry>> {
@@ -425,4 +421,126 @@ pub fn evaluate_constant_expression(
     }
 
     Ok(stack.frame()[stack.working_limit() - arity..stack.working_limit()].to_vec())
+}
+
+fn execute_inner_loop<'a>(
+    iter: &'_ mut impl Iterator<Item = Result<Instruction<'a>>>,
+    stack: &'_ mut Stack,
+    store: &'_ mut impl ExpressionStore,
+) -> Option<Result<Instruction<'a>>> {
+    loop {
+        match iter.next() {
+            None => {
+                return None;
+            }
+            Some(Err(e)) => {
+                return Some(Err(e));
+            }
+            Some(Ok(instruction)) => {
+                match execute_single_instruction(&instruction, stack, store) {
+                    Ok(result) if result != InstructionResult::Done => {
+                        return Some(Ok(instruction));
+                    }
+                    Err(e) => {
+                        return Some(Err(e));
+                    }
+
+                    Ok(_) => {} // Normal instruction executed normally
+                }
+            }
+        }
+    }
+}
+
+fn execute_block_expression(
+    block_type: BlockType,
+    _is_loop: bool,
+    expr: &(impl InstructionSource + ?Sized),
+    stack: &mut Stack,
+    store: &mut impl ExpressionStore,
+) -> Result<()> {
+    // TODOTODOTODO - need to create a label. Until we support branching though, we can ignore that
+
+    let previous_working_count = stack.working_count();
+
+    execute_expression(expr, stack, store)?;
+
+    let expected_values = if block_type == BlockType::None { 0 } else { 1 };
+    assert!(stack.working_count() >= previous_working_count + expected_values);
+
+    let values_to_drop = (stack.working_count() - expected_values) - previous_working_count;
+    stack.drop_entries(values_to_drop, expected_values);
+
+    Ok(())
+}
+
+fn execute_if<'a>(
+    instruction: &'a Instruction<'a>,
+    stack: &mut Stack,
+    store: &mut impl ExpressionStore,
+) -> Result<()> {
+    let condition = u32::try_from(get_stack_top(stack, 1)?[0])?;
+    stack.pop();
+
+    if condition != 0 {
+        execute_block_expression(
+            instruction.get_block_type(),
+            false,
+            instruction.get_block(),
+            stack,
+            store,
+        )
+    } else if instruction.has_else_block() {
+        execute_block_expression(
+            instruction.get_block_type(),
+            false,
+            instruction.get_else_block(),
+            stack,
+            store,
+        )
+    } else if instruction.get_block_type() != BlockType::None {
+        Err(anyhow!("If instruction with block type other than none should have an else block (shouldn't it?)"))
+    } else {
+        Ok(())
+    }
+}
+
+pub fn execute_expression(
+    expr: &(impl InstructionSource + ?Sized),
+    stack: &mut Stack,
+    store: &mut impl ExpressionStore,
+) -> Result<()> {
+    let mut iter = expr.iter();
+    loop {
+        match execute_inner_loop(&mut iter, stack, store) {
+            Some(Err(e)) => return Err(e),
+            None => return Ok(()),
+
+            Some(Ok(instruction)) if instruction.opcode() == Opcode::If => {
+                execute_if(&instruction, stack, store)?
+            }
+            Some(Ok(instruction)) if instruction.opcode() == Opcode::Block => {
+                execute_block_expression(
+                    instruction.get_block_type(),
+                    false,
+                    instruction.get_block(),
+                    stack,
+                    store,
+                )?
+            }
+            Some(Ok(instruction)) if instruction.opcode() == Opcode::Loop => {
+                execute_block_expression(
+                    instruction.get_block_type(),
+                    true,
+                    instruction.get_block(),
+                    stack,
+                    store,
+                )?
+            }
+
+            Some(Ok(instruction)) => {
+                unimplemented!("Cannot handle {:?}", instruction); // Control instruction
+            }
+        }
+    }
 }

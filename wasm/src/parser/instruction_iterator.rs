@@ -1,4 +1,7 @@
-use crate::parser::{self, InstructionAccumulator};
+use crate::{
+    core::BlockType,
+    parser::{self, InstructionAccumulator, InstructionData},
+};
 use anyhow::{anyhow, Result};
 
 #[derive(Debug)]
@@ -7,10 +10,11 @@ pub struct Instruction<'a> {
     opcode: parser::Opcode,
     cat: parser::InstructionCategory,
     acc: parser::SliceInstructionAccumulator<'a>,
+    data: parser::InstructionData,
 }
 
 impl<'a> Instruction<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
+    fn new(bytes: &'a [u8], data: InstructionData) -> Self {
         // All instructions are at least one byte long, and we depend heavily on that assumption
         assert!(bytes.len() > 0);
 
@@ -24,6 +28,7 @@ impl<'a> Instruction<'a> {
             opcode,
             cat,
             acc,
+            data,
         }
     }
 
@@ -38,7 +43,7 @@ impl<'a> Instruction<'a> {
     }
 
     #[allow(dead_code)]
-    fn category(&self) -> &parser::InstructionCategory {
+    pub fn category(&self) -> &parser::InstructionCategory {
         &self.cat
     }
 
@@ -92,15 +97,31 @@ impl<'a> Instruction<'a> {
     pub fn get_pair_u32_as_usize_arg(&self) -> (usize, usize) {
         self.cat.get_pair_u32_as_usize_arg(&self.acc, 0)
     }
+
+    pub fn get_block_type(&self) -> BlockType {
+        self.cat.get_block_type(&self.acc, 0)
+    }
+
+    pub fn has_else_block(&self) -> bool {
+        self.cat.has_else_block(&self.acc, 0, &self.data)
+    }
+
+    pub fn get_block<'b>(&'b self) -> &'b [u8] {
+        self.cat.get_block(&self.acc, 0, &self.data)
+    }
+
+    pub fn get_else_block<'b>(&'b self) -> &'b [u8] {
+        self.cat.get_else_block(&self.acc, 0, &self.data)
+    }
 }
 
-pub struct InstructionIterator<'a, Source: InstructionSource> {
+pub struct InstructionIterator<'a, Source: InstructionSource + ?Sized> {
     source: &'a Source,
     current_instr_start: usize,
     current_instr_end: usize,
 }
 
-impl<'a, Source: InstructionSource> InstructionIterator<'a, Source> {
+impl<'a, Source: InstructionSource + ?Sized> InstructionIterator<'a, Source> {
     pub fn new(source: &'a Source) -> Self {
         Self {
             source,
@@ -119,17 +140,18 @@ impl<'a, Source: InstructionSource> InstructionIterator<'a, Source> {
 
         let lead_byte = self.get_byte(0);
         let lead_byte = parser::InstructionCategory::from_lead_byte(lead_byte)?;
-        let instr_length = lead_byte.ensure_instruction(self, 0)?;
+        let instr_data = lead_byte.ensure_instruction(self, 0)?;
 
-        self.current_instr_end += instr_length;
+        self.current_instr_end += instr_data.length();
 
         Ok(Instruction::new(
             &self.source.get_instruction_bytes()[self.current_instr_start..self.current_instr_end],
+            instr_data,
         ))
     }
 }
 
-impl<'a, Source: InstructionSource> Iterator for InstructionIterator<'a, Source> {
+impl<'a, Source: InstructionSource + ?Sized> Iterator for InstructionIterator<'a, Source> {
     type Item = Result<Instruction<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -155,13 +177,13 @@ impl<'a, Source: InstructionSource> Iterator for InstructionIterator<'a, Source>
     }
 }
 
-impl<'a, Source: InstructionSource> InstructionSource for InstructionIterator<'a, Source> {
+impl<'a, Source: InstructionSource + ?Sized> InstructionSource for InstructionIterator<'a, Source> {
     fn get_instruction_bytes(&self) -> &[u8] {
         self.source.get_instruction_bytes()
     }
 }
 
-impl<'a, Source: InstructionSource> parser::InstructionAccumulator
+impl<'a, Source: InstructionSource + ?Sized> parser::InstructionAccumulator
     for InstructionIterator<'a, Source>
 {
     fn ensure_bytes(&mut self, bytes: usize) -> Result<()> {
@@ -185,15 +207,12 @@ impl<'a, Source: InstructionSource> parser::InstructionAccumulator
 pub trait InstructionSource {
     fn get_instruction_bytes(&self) -> &[u8];
 
-    fn iter<'a>(&'a self) -> InstructionIterator<'a, Self>
-    where
-        Self: Sized,
-    {
+    fn iter<'a>(&'a self) -> InstructionIterator<'a, Self> {
         InstructionIterator::new(&self)
     }
 }
 
-impl<T: AsRef<[u8]>> InstructionSource for T {
+impl<T: AsRef<[u8]> + ?Sized> InstructionSource for T {
     fn get_instruction_bytes(&self) -> &[u8] {
         self.as_ref()
     }

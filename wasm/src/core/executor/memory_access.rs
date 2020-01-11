@@ -130,7 +130,7 @@ pub fn mem_load<
     FuncType: Fn(IntType) -> ValueType,
     Store: ExpressionStore,
 >(
-    instruction: Instruction,
+    instruction: &Instruction,
     stack: &mut Stack,
     store: &mut Store,
     func: FuncType,
@@ -163,7 +163,7 @@ pub fn mem_store<
     FuncType: Fn(ValueType) -> IntType,
     Store: ExpressionStore,
 >(
-    instruction: Instruction,
+    instruction: &Instruction,
     stack: &mut Stack,
     store: &mut Store,
     func: FuncType,

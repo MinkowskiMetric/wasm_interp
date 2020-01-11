@@ -1,4 +1,7 @@
-use crate::parser::{InstructionAccumulator, Opcode};
+use crate::{
+    core::BlockType,
+    parser::{InstructionAccumulator, Opcode},
+};
 use anyhow::{anyhow, Result};
 use std::convert::{TryFrom, TryInto};
 
@@ -13,6 +16,45 @@ pub enum InstructionCategory {
     End,              // No arguments
     TwoLebInteger,    // Two I32 arguments
     BranchTable,      // Vector of I32 arguments containing at least one entry
+}
+
+#[derive(Debug)]
+pub struct BlockRange {
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug)]
+pub struct InstructionData {
+    length: usize,
+    block_range: Option<BlockRange>,
+    else_range: Option<BlockRange>,
+}
+
+fn simple_instruction_data(length: usize) -> InstructionData {
+    InstructionData {
+        length,
+        block_range: None,
+        else_range: None,
+    }
+}
+
+fn block_instruction_data(
+    length: usize,
+    block_range: BlockRange,
+    else_range: Option<BlockRange>,
+) -> InstructionData {
+    InstructionData {
+        length,
+        block_range: Some(block_range),
+        else_range,
+    }
+}
+
+impl InstructionData {
+    pub fn length(&self) -> usize {
+        self.length
+    }
 }
 
 impl InstructionCategory {
@@ -73,16 +115,22 @@ impl InstructionCategory {
         &self,
         acc: &mut T,
         offset: usize,
-    ) -> Result<usize> {
+    ) -> Result<InstructionData> {
         match self {
             InstructionCategory::SingleByte
             | InstructionCategory::Else
-            | InstructionCategory::End => acc.ensure_bytes(offset + 1).map(|_| 1),
-            InstructionCategory::SingleLebInteger => {
-                acc.ensure_leb_at(offset + 1).map(|leb_size| 1 + leb_size)
-            }
-            InstructionCategory::SingleFloat => acc.ensure_bytes(offset + 5).map(|_| 5),
-            InstructionCategory::SingleDouble => acc.ensure_bytes(offset + 9).map(|_| 9),
+            | InstructionCategory::End => acc
+                .ensure_bytes(offset + 1)
+                .map(|_| simple_instruction_data(1)),
+            InstructionCategory::SingleLebInteger => acc
+                .ensure_leb_at(offset + 1)
+                .map(|leb_size| simple_instruction_data(1 + leb_size)),
+            InstructionCategory::SingleFloat => acc
+                .ensure_bytes(offset + 5)
+                .map(|_| simple_instruction_data(5)),
+            InstructionCategory::SingleDouble => acc
+                .ensure_bytes(offset + 9)
+                .map(|_| simple_instruction_data(9)),
             InstructionCategory::Block(allow_else) => {
                 self.ensure_block_instruction(*allow_else, acc, offset)
             }
@@ -95,11 +143,11 @@ impl InstructionCategory {
         &self,
         acc: &mut T,
         offset: usize,
-    ) -> Result<usize> {
+    ) -> Result<InstructionData> {
         let align_size = acc.ensure_leb_at(offset + 1)?;
         let offset_size = acc.ensure_leb_at(offset + 1 + align_size)?;
 
-        Ok(1 + align_size + offset_size)
+        Ok(simple_instruction_data(1 + align_size + offset_size))
     }
 
     fn ensure_block_instruction<T: InstructionAccumulator>(
@@ -107,10 +155,15 @@ impl InstructionCategory {
         allow_else: bool,
         acc: &mut T,
         offset: usize,
-    ) -> Result<usize> {
+    ) -> Result<InstructionData> {
+        // Validate the block type
+        acc.ensure_bytes(offset + 2)?;
+        BlockType::try_from(acc.get_byte(offset + 1))?;
+
         // Child instruction offset always starts at 2 because all blocks begin with a block type
-        let mut next_child_offset: usize = offset + 2;
-        let mut seen_else = false;
+        let mut next_child_offset = offset + 2;
+        let mut range_start = next_child_offset;
+        let mut block_range: Option<BlockRange> = None;
 
         loop {
             // Make sure that we have the lead byte of the next instruction
@@ -124,21 +177,43 @@ impl InstructionCategory {
             let child_instr_size = child_instr_cat.ensure_instruction(acc, next_child_offset)?;
 
             if child_instr_cat == InstructionCategory::Else {
-                if seen_else || !allow_else {
+                if !block_range.is_none() || !allow_else {
                     return Err(anyhow!("Unexpected else in block"));
                 }
 
-                // Move past the else
-                next_child_offset += child_instr_size;
+                block_range = Some(BlockRange {
+                    start: range_start - offset,
+                    end: next_child_offset - offset,
+                });
 
-                // Record that we've seen the else so we don't allow a second one
-                seen_else = true;
+                // Move past the else
+                next_child_offset += child_instr_size.length();
+                range_start = next_child_offset;
             } else if child_instr_cat == InstructionCategory::End {
+                let current_range = BlockRange {
+                    start: range_start - offset,
+                    end: next_child_offset - offset,
+                };
+
+                let instruction_data = if let Some(block_range) = block_range {
+                    block_instruction_data(
+                        next_child_offset + child_instr_size.length() - offset,
+                        block_range,
+                        Some(current_range),
+                    )
+                } else {
+                    block_instruction_data(
+                        next_child_offset + child_instr_size.length() - offset,
+                        current_range,
+                        None,
+                    )
+                };
+
                 // Subtract the original offset to get the instruction size
-                return Ok(next_child_offset + child_instr_size - offset);
+                return Ok(instruction_data);
             } else {
                 // Move on to the next instruction
-                next_child_offset += child_instr_size;
+                next_child_offset += child_instr_size.length();
             }
         }
     }
@@ -147,7 +222,7 @@ impl InstructionCategory {
         &self,
         acc: &mut T,
         offset: usize,
-    ) -> Result<usize> {
+    ) -> Result<InstructionData> {
         // This is a bloody complicated instruction to parse
         // Basically we have a vector of integers followed by an integer
 
@@ -165,7 +240,7 @@ impl InstructionCategory {
         // And finally, there is the last entry
         instr_size += acc.ensure_leb_at(offset + instr_size)?;
 
-        Ok(instr_size)
+        Ok(simple_instruction_data(instr_size))
     }
 
     pub fn get_single_u32_arg<T: InstructionAccumulator>(&self, acc: &T, offset: usize) -> u32 {
@@ -236,12 +311,76 @@ impl InstructionCategory {
         }
     }
 
-    pub fn get_pair_u32_as_usize_arg<T: InstructionAccumulator>(
+    pub fn get_pair_u32_as_usize_arg(
         &self,
-        acc: &T,
+        acc: &impl InstructionAccumulator,
         offset: usize,
     ) -> (usize, usize) {
         let (a1, a2) = self.get_pair_u32_arg(acc, offset);
         (a1.try_into().unwrap(), a2.try_into().unwrap())
+    }
+
+    pub fn get_block_type(&self, acc: &impl InstructionAccumulator, offset: usize) -> BlockType {
+        match self {
+            InstructionCategory::Block(_) => {
+                BlockType::from_byte(acc.get_byte(offset + 1)).unwrap()
+            }
+
+            _ => panic!(
+                "No block result type for instructions of category {:?}",
+                self
+            ),
+        }
+    }
+
+    pub fn has_else_block(
+        &self,
+        _acc: &impl InstructionAccumulator,
+        _offset: usize,
+        data: &InstructionData,
+    ) -> bool {
+        match data {
+            InstructionData {
+                else_range: Some(_),
+                ..
+            } => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_block<'a>(
+        &'_ self,
+        acc: &'a impl InstructionAccumulator,
+        offset: usize,
+        data: &InstructionData,
+    ) -> &'a [u8] {
+        match data {
+            InstructionData {
+                block_range: Some(block_range),
+                ..
+            } => acc.get_bytes(
+                offset + block_range.start,
+                block_range.end - block_range.start,
+            ),
+            _ => panic!("No else block"),
+        }
+    }
+
+    pub fn get_else_block<'a>(
+        &'_ self,
+        acc: &'a impl InstructionAccumulator,
+        offset: usize,
+        data: &InstructionData,
+    ) -> &'a [u8] {
+        match data {
+            InstructionData {
+                else_range: Some(block_range),
+                ..
+            } => acc.get_bytes(
+                offset + block_range.start,
+                block_range.end - block_range.start,
+            ),
+            _ => panic!("No else block"),
+        }
     }
 }
