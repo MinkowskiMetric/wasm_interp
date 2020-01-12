@@ -1,10 +1,17 @@
 use crate::core::stack_entry::StackEntry;
 
 #[derive(Debug)]
+struct StackLabel {
+    sp: usize,
+    arity: usize,
+}
+
+#[derive(Debug)]
 pub struct StackFrame {
     sp: usize,
     parameter_count: usize,
     local_count: usize,
+    label_stack: Vec<StackLabel>,
 }
 
 impl StackFrame {
@@ -13,6 +20,7 @@ impl StackFrame {
             sp,
             parameter_count,
             local_count,
+            label_stack: Vec::new(),
         }
     }
 
@@ -42,6 +50,38 @@ impl StackFrame {
 
     pub fn local_limit(&self) -> usize {
         self.parameter_limit() + self.local_count()
+    }
+
+    pub fn working_base(&self) -> usize {
+        match self.label_stack.last() {
+            Some(label) => label.sp,
+            _ => self.local_limit(),
+        }
+    }
+
+    pub fn push_label(&mut self, sp: usize, arity: usize) {
+        assert!(sp >= self.working_base());
+        self.label_stack.push(StackLabel { sp, arity });
+    }
+
+    pub fn pop_n_labels(&mut self, count: usize) -> (usize, usize) {
+        assert!(self.label_stack.len() >= count);
+
+        let last_entry_idx = self.label_stack.len() - count;
+        let StackLabel { sp, arity } = self.label_stack[last_entry_idx];
+
+        // Then we simply resize the label stack to truncate it
+        self.label_stack.truncate(last_entry_idx);
+
+        (sp, arity)
+    }
+
+    #[allow(dead_code)]
+    pub fn label_arity(&self) -> usize {
+        match self.label_stack.last() {
+            Some(label) => label.arity,
+            _ => panic!("No label"),
+        }
     }
 }
 
@@ -116,12 +156,12 @@ impl Stack {
 
     #[allow(dead_code)]
     pub fn working_base(&self) -> usize {
-        self.local_limit()
+        self.last_frame(|f| f.working_base())
     }
 
     #[allow(dead_code)]
     pub fn working_count(&self) -> usize {
-        self.height() - self.local_limit()
+        self.height() - self.working_base()
     }
 
     #[allow(dead_code)]
@@ -200,7 +240,6 @@ impl Stack {
         }
     }
 
-    #[allow(dead_code)]
     pub fn drop_entries(&mut self, to_drop: usize, arity: usize) {
         assert!(self.working_count() >= to_drop + arity);
 
@@ -218,7 +257,6 @@ impl Stack {
         }
     }
 
-    #[allow(dead_code)]
     pub fn push_frame(&mut self, parameter_count: usize, local_count: usize) {
         assert!(self.working_count() >= parameter_count);
 
@@ -240,7 +278,6 @@ impl Stack {
         self.stack_height += local_count;
     }
 
-    #[allow(dead_code)]
     pub fn pop_frame(&mut self, arity: usize) {
         assert!(!self.frames.is_empty());
         assert!(self.working_count() >= arity);
@@ -261,6 +298,18 @@ impl Stack {
         for i in new_result_base + arity..clear_limit {
             self.entries[i] = StackEntry::Unused;
         }
+    }
+
+    pub fn push_label(&mut self, arity: usize) {
+        let sp = self.height();
+        self.frames.last_mut().unwrap().push_label(sp, arity);
+    }
+
+    pub fn pop_n_labels(&mut self, count: usize) {
+        // We ask the frame to drop the labels and tell us how to fix up the
+        // stack
+        let (sp, arity) = self.frames.last_mut().unwrap().pop_n_labels(count);
+        self.drop_entries((self.height() - sp) - arity, arity);
     }
 
     fn ensure_entries(&mut self, n: usize) {
@@ -288,7 +337,7 @@ mod test {
         stack.push_frame(parameter_count, local_count)
     }
 
-    fn check_stack_ranges(stack: &Stack) -> (usize, usize, usize) {
+    fn check_stack_ranges(stack: &Stack) -> (usize, usize, usize, usize) {
         assert_eq!(stack.frame_base(), stack.parameter_base());
 
         let parameter_count = stack.parameter_count();
@@ -300,14 +349,20 @@ mod test {
 
         let local_count = stack.local_count();
         assert_eq!(stack.local_limit(), stack.local_base() + local_count);
-        assert_eq!(stack.working_base(), stack.local_limit());
+
+        let hidden_working_count = stack.working_base() - stack.local_limit();
 
         let working_count = stack.working_count();
         assert_eq!(stack.working_limit(), stack.working_base() + working_count);
         assert_eq!(stack.frame_limit(), stack.working_limit());
         assert_eq!(stack.height(), stack.frame_limit());
 
-        (parameter_count, local_count, working_count)
+        (
+            parameter_count,
+            local_count,
+            hidden_working_count,
+            working_count,
+        )
     }
 
     #[test]
@@ -316,7 +371,7 @@ mod test {
 
         assert_eq!(stack.is_empty(), true);
         assert_eq!(stack.frame_base(), 0);
-        assert_eq!(check_stack_ranges(&stack), (0, 0, 0));
+        assert_eq!(check_stack_ranges(&stack), (0, 0, 0, 0));
     }
 
     #[test]
@@ -326,7 +381,7 @@ mod test {
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 0);
-        assert_eq!(check_stack_ranges(&stack), (0, 4, 0));
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 0, 0));
 
         // Validate that the locals are all currently "Unused"
         assert_eq!(stack.frame().len(), 4);
@@ -349,7 +404,7 @@ mod test {
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 0);
-        assert_eq!(check_stack_ranges(&stack), (0, 4, 1));
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 0, 1));
 
         stack.push_from_slice(&[
             StackEntry::I32Entry(5),
@@ -359,7 +414,7 @@ mod test {
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 0);
-        assert_eq!(check_stack_ranges(&stack), (0, 4, 4));
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 0, 4));
 
         // Verify that the locals are unaffected
         for i in 0..4 {
@@ -377,7 +432,7 @@ mod test {
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 0);
-        assert_eq!(check_stack_ranges(&stack), (0, 4, 3));
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 0, 3));
 
         for i in 0..4 {
             assert_eq!(stack.local()[i], u32::try_from(i).unwrap().into());
@@ -393,7 +448,7 @@ mod test {
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 0);
-        assert_eq!(check_stack_ranges(&stack), (0, 4, 4));
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 0, 4));
 
         assert_eq!(stack.frame()[7], 32.0f32.into());
 
@@ -402,7 +457,7 @@ mod test {
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 0);
-        assert_eq!(check_stack_ranges(&stack), (0, 4, 2));
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 0, 2));
 
         for i in 4..6 {
             assert_eq!(stack.frame()[i], u32::try_from(i).unwrap().into());
@@ -413,14 +468,14 @@ mod test {
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 0);
-        assert_eq!(check_stack_ranges(&stack), (0, 4, 3));
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 0, 3));
 
         // Now replace the top entries with that one entry
         stack.drop_entries(2, 1);
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 0);
-        assert_eq!(check_stack_ranges(&stack), (0, 4, 1));
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 0, 1));
 
         assert_eq!(stack.frame()[4], 32.0f64.into());
 
@@ -429,7 +484,7 @@ mod test {
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 4);
-        assert_eq!(check_stack_ranges(&stack), (1, 4, 0));
+        assert_eq!(check_stack_ranges(&stack), (1, 4, 0, 0));
         assert_eq!(stack.local()[0], 32f64.into());
 
         // Now add a return value
@@ -437,7 +492,7 @@ mod test {
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 4);
-        assert_eq!(check_stack_ranges(&stack), (1, 4, 1));
+        assert_eq!(check_stack_ranges(&stack), (1, 4, 0, 1));
         assert_eq!(stack.frame()[5], 42f64.into());
 
         // Now pop the frame
@@ -445,7 +500,42 @@ mod test {
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 0);
-        assert_eq!(check_stack_ranges(&stack), (0, 4, 1));
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 0, 1));
         assert_eq!(stack.frame()[4], 42f64.into());
+
+        // Now push some constants
+        stack.push(42f64.into());
+        stack.push(42f64.into());
+        stack.push(42f64.into());
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 0, 4));
+
+        // Now push a label with arity of 2
+        stack.push_label(2);
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 4, 0));
+
+        // Locals should be unchanged
+        for i in 0..4 {
+            assert!(std::ptr::eq(&stack.frame()[i], &stack.local()[i]));
+            assert_eq!(stack.local()[i], u32::try_from(i).unwrap().into());
+        }
+
+        // Pushing three values should be fine
+        stack.push(0f64.into());
+        stack.push(43f64.into());
+        stack.push(44f64.into());
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 4, 3));
+        assert_eq!(
+            stack.working_top(3),
+            [0f64.into(), 43f64.into(), 44f64.into()]
+        );
+
+        // Now pop the label
+        stack.pop_n_labels(1);
+        assert_eq!(check_stack_ranges(&stack), (0, 4, 0, 6));
+
+        assert_eq!(
+            stack.working_top(3),
+            [42f64.into(), 43f64.into(), 44f64.into()]
+        );
     }
 }

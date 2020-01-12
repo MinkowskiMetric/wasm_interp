@@ -452,33 +452,80 @@ fn execute_inner_loop<'a>(
     }
 }
 
+struct BranchControl {
+    is_branch: bool,
+    label_idx: usize,
+    label_cnt: usize,
+}
+
+impl BranchControl {
+    pub fn no_branch() -> Self {
+        BranchControl {
+            is_branch: false,
+            label_idx: 0,
+            label_cnt: 0,
+        }
+    }
+
+    pub fn branch_target(label_idx: usize) -> Self {
+        BranchControl {
+            is_branch: true,
+            label_idx,
+            label_cnt: label_idx,
+        }
+    }
+}
+
 fn execute_block_expression(
     block_type: BlockType,
-    _is_loop: bool,
+    is_loop: bool,
     expr: &(impl InstructionSource + ?Sized),
     stack: &mut Stack,
     store: &mut impl ExpressionStore,
-) -> Result<()> {
-    // TODOTODOTODO - need to create a label. Until we support branching though, we can ignore that
+) -> Result<BranchControl> {
+    loop {
+        // Push a label on to the stack. This is mainly used as a stack guard, since we will probably
+        // end up using the rust stack to handle actual branching. Loops ignore the return type, even
+        // though it is present in the grammar
+        let block_arity = if is_loop || block_type == BlockType::None {
+            0
+        } else {
+            1
+        };
+        stack.push_label(block_arity);
 
-    let previous_working_count = stack.working_count();
+        // Now execute the expression
+        let branch_control = execute_expression_internal(expr, stack, store)?;
 
-    execute_expression(expr, stack, store)?;
+        if !branch_control.is_branch || branch_control.label_idx == 0 {
+            // Either this isn't a branch, or this is a branch to here. We have to
+            // distinguish between no branch, and branch to zero because of the loop
+            // instruction where we behave differently.
 
-    let expected_values = if block_type == BlockType::None { 0 } else { 1 };
-    assert!(stack.working_count() >= previous_working_count + expected_values);
+            // Walk all of the labels back off the stack. We add one to account for the lable we're
+            // going to
+            stack.pop_n_labels(branch_control.label_cnt + 1);
 
-    let values_to_drop = (stack.working_count() - expected_values) - previous_working_count;
-    stack.drop_entries(values_to_drop, expected_values);
-
-    Ok(())
+            // If this is not a loop, then return no branch to indicate we're done, otherwise go around
+            // the loop again
+            if !branch_control.is_branch || !is_loop {
+                return Ok(BranchControl::no_branch());
+            }
+        } else {
+            return Ok(BranchControl {
+                is_branch: true,
+                label_idx: branch_control.label_idx - 1,
+                label_cnt: branch_control.label_cnt,
+            });
+        }
+    }
 }
 
 fn execute_if<'a>(
     instruction: &'a Instruction<'a>,
     stack: &mut Stack,
     store: &mut impl ExpressionStore,
-) -> Result<()> {
+) -> Result<BranchControl> {
     let condition = u32::try_from(get_stack_top(stack, 1)?[0])?;
     stack.pop();
 
@@ -501,7 +548,78 @@ fn execute_if<'a>(
     } else if instruction.get_block_type() != BlockType::None {
         Err(anyhow!("If instruction with block type other than none should have an else block (shouldn't it?)"))
     } else {
-        Ok(())
+        Ok(BranchControl::no_branch())
+    }
+}
+
+fn execute_br(
+    label: usize,
+    _stack: &mut Stack,
+    _store: &mut impl ExpressionStore,
+) -> Result<BranchControl> {
+    // Taking the branch is pretty easy
+    Ok(BranchControl::branch_target(label))
+}
+
+fn execute_br_if(
+    label: usize,
+    stack: &mut Stack,
+    store: &mut impl ExpressionStore,
+) -> Result<BranchControl> {
+    let condition = u32::try_from(get_stack_top(stack, 1)?[0])?;
+    stack.pop();
+
+    if condition != 0 {
+        Ok(execute_br(label, stack, store)?)
+    } else {
+        Ok(BranchControl::no_branch())
+    }
+}
+
+fn execute_expression_internal(
+    expr: &(impl InstructionSource + ?Sized),
+    stack: &mut Stack,
+    store: &mut impl ExpressionStore,
+) -> Result<BranchControl> {
+    let mut iter = expr.iter();
+    loop {
+        let ret = execute_inner_loop(&mut iter, stack, store);
+        if let Some(Ok(instruction)) = ret {
+            let branch_control = match instruction.opcode() {
+                Opcode::If => execute_if(&instruction, stack, store)?,
+                Opcode::Block => execute_block_expression(
+                    instruction.get_block_type(),
+                    false,
+                    instruction.get_block(),
+                    stack,
+                    store,
+                )?,
+                Opcode::Loop => execute_block_expression(
+                    instruction.get_block_type(),
+                    true,
+                    instruction.get_block(),
+                    stack,
+                    store,
+                )?,
+
+                Opcode::Br => execute_br(instruction.get_single_u32_as_usize_arg(), stack, store)?,
+                Opcode::BrIf => {
+                    execute_br_if(instruction.get_single_u32_as_usize_arg(), stack, store)?
+                }
+
+                _ => unimplemented!("Cannot handle {:?}", instruction), // Control instruction
+            };
+
+            // If we're branching, then propagate the branch to the caller
+            if branch_control.is_branch {
+                return Ok(branch_control);
+            }
+        } else if let Some(Err(e)) = ret {
+            return Err(e);
+        } else {
+            assert!(ret.is_none());
+            return Ok(BranchControl::no_branch());
+        }
     }
 }
 
@@ -510,37 +628,6 @@ pub fn execute_expression(
     stack: &mut Stack,
     store: &mut impl ExpressionStore,
 ) -> Result<()> {
-    let mut iter = expr.iter();
-    loop {
-        match execute_inner_loop(&mut iter, stack, store) {
-            Some(Err(e)) => return Err(e),
-            None => return Ok(()),
-
-            Some(Ok(instruction)) if instruction.opcode() == Opcode::If => {
-                execute_if(&instruction, stack, store)?
-            }
-            Some(Ok(instruction)) if instruction.opcode() == Opcode::Block => {
-                execute_block_expression(
-                    instruction.get_block_type(),
-                    false,
-                    instruction.get_block(),
-                    stack,
-                    store,
-                )?
-            }
-            Some(Ok(instruction)) if instruction.opcode() == Opcode::Loop => {
-                execute_block_expression(
-                    instruction.get_block_type(),
-                    true,
-                    instruction.get_block(),
-                    stack,
-                    store,
-                )?
-            }
-
-            Some(Ok(instruction)) => {
-                unimplemented!("Cannot handle {:?}", instruction); // Control instruction
-            }
-        }
-    }
+    execute_expression_internal(expr, stack, store)?;
+    Ok(())
 }
