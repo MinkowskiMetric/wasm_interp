@@ -35,10 +35,41 @@ macro_rules! test_constant_opcode {
     };
 }
 
+pub fn test_no_return_expression_impl(expr: impl InstructionSource) -> Option<()> {
+    // Now we need a stack and a store to run the op against
+    let mut stack = Stack::new();
+    let mut test_store = TestStore::new();
+
+    // We push a frame onto the stack. This helps the expressions in the case they might need
+    // to use a block
+    stack.push_frame(0, 0);
+
+    if let Err(_) = execute_expression(&expr, &mut stack, &mut test_store) {
+        None
+    } else {
+        if stack.working_count() == 0 {
+            Some(())
+        } else {
+            None
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! test_no_return_expression {
+    ($expr:expr) => {
+        assert_eq!(test_no_return_expression_impl($expr), Some(()));
+    };
+}
+
 pub fn test_single_return_expression_impl(expr: impl InstructionSource) -> Option<StackEntry> {
     // Now we need a stack and a store to run the op against
     let mut stack = Stack::new();
     let mut test_store = TestStore::new();
+
+    // We push a frame onto the stack. This helps the expressions in the case they might need
+    // to use a block
+    stack.push_frame(0, 0);
 
     if let Err(_) = execute_expression(&expr, &mut stack, &mut test_store) {
         None
