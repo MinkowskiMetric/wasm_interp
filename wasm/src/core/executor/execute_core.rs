@@ -49,29 +49,78 @@ fn execute_single_constant_instruction(
 
 #[derive(Debug, Clone, PartialEq)]
 enum InstructionResult {
+    Block,
+    Loop,
+    If,
+    Br,
+    BrIf,
+    BrTable,
+    Return,
+    Call,
+    CallIndirect,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum SingleInstructionResult {
     Done,
-    ControlChange,
+    ControlInstruction(InstructionResult),
 }
 
 fn execute_single_instruction(
     instruction: &Instruction,
     stack: &mut Stack,
     store: &mut impl ExpressionStore,
-) -> Result<InstructionResult> {
+) -> Result<SingleInstructionResult> {
     match instruction.opcode() {
         Opcode::Unreachable => return Err(anyhow!("Unreachable opcode")),
         Opcode::Nop => {}
-        Opcode::Block => return Ok(InstructionResult::ControlChange),
-        Opcode::Loop => return Ok(InstructionResult::ControlChange),
-        Opcode::If => return Ok(InstructionResult::ControlChange),
+        Opcode::Block => {
+            return Ok(SingleInstructionResult::ControlInstruction(
+                InstructionResult::Block,
+            ))
+        }
+        Opcode::Loop => {
+            return Ok(SingleInstructionResult::ControlInstruction(
+                InstructionResult::Loop,
+            ))
+        }
+        Opcode::If => {
+            return Ok(SingleInstructionResult::ControlInstruction(
+                InstructionResult::If,
+            ))
+        }
         Opcode::Else => panic!("Else opcode should not pass through opcode iterator"),
         Opcode::End => panic!("End opcode should not pass through opcode iterator"),
-        Opcode::Br => return Ok(InstructionResult::ControlChange),
-        Opcode::BrIf => return Ok(InstructionResult::ControlChange),
-        Opcode::BrTable => return Ok(InstructionResult::ControlChange),
-        Opcode::Return => return Ok(InstructionResult::ControlChange),
-        Opcode::Call => return Ok(InstructionResult::ControlChange),
-        Opcode::CallIndirect => return Ok(InstructionResult::ControlChange),
+        Opcode::Br => {
+            return Ok(SingleInstructionResult::ControlInstruction(
+                InstructionResult::Br,
+            ))
+        }
+        Opcode::BrIf => {
+            return Ok(SingleInstructionResult::ControlInstruction(
+                InstructionResult::BrIf,
+            ))
+        }
+        Opcode::BrTable => {
+            return Ok(SingleInstructionResult::ControlInstruction(
+                InstructionResult::BrTable,
+            ))
+        }
+        Opcode::Return => {
+            return Ok(SingleInstructionResult::ControlInstruction(
+                InstructionResult::Return,
+            ))
+        }
+        Opcode::Call => {
+            return Ok(SingleInstructionResult::ControlInstruction(
+                InstructionResult::Call,
+            ))
+        }
+        Opcode::CallIndirect => {
+            return Ok(SingleInstructionResult::ControlInstruction(
+                InstructionResult::CallIndirect,
+            ))
+        }
 
         Opcode::Drop => {
             // Probe the stack top to make sure there is a value there. We don't care what it is.
@@ -393,7 +442,7 @@ fn execute_single_instruction(
         }
     }
 
-    Ok(InstructionResult::Done)
+    Ok(SingleInstructionResult::Done)
 }
 
 pub fn execute_constant_expression(
@@ -427,7 +476,7 @@ fn execute_inner_loop<'a>(
     iter: &'_ mut impl Iterator<Item = Result<Instruction<'a>>>,
     stack: &'_ mut Stack,
     store: &'_ mut impl ExpressionStore,
-) -> Option<Result<Instruction<'a>>> {
+) -> Option<Result<(InstructionResult, Instruction<'a>)>> {
     loop {
         match iter.next() {
             None => {
@@ -438,14 +487,13 @@ fn execute_inner_loop<'a>(
             }
             Some(Ok(instruction)) => {
                 match execute_single_instruction(&instruction, stack, store) {
-                    Ok(result) if result != InstructionResult::Done => {
-                        return Some(Ok(instruction));
+                    Ok(SingleInstructionResult::Done) => {} // Normal instruction executed normally
+                    Ok(SingleInstructionResult::ControlInstruction(ir)) => {
+                        return Some(Ok((ir, instruction)));
                     }
                     Err(e) => {
                         return Some(Err(e));
                     }
-
-                    Ok(_) => {} // Normal instruction executed normally
                 }
             }
         }
@@ -552,6 +600,20 @@ fn execute_if<'a>(
     }
 }
 
+fn execute_block<'a>(
+    instruction: &'a Instruction<'a>,
+    stack: &mut Stack,
+    store: &mut impl ExpressionStore,
+) -> Result<BranchControl> {
+    execute_block_expression(
+        instruction.get_block_type(),
+        instruction.opcode() == Opcode::Loop,
+        instruction.get_block(),
+        stack,
+        store,
+    )
+}
+
 fn execute_br(
     label: usize,
     _stack: &mut Stack,
@@ -576,6 +638,21 @@ fn execute_br_if(
     }
 }
 
+fn execute_br_table(
+    labels: &[usize],
+    stack: &mut Stack,
+    store: &mut impl ExpressionStore,
+) -> Result<BranchControl> {
+    assert!(labels.len() > 0);
+
+    let index = u32::try_from(get_stack_top(stack, 1)?[0])?;
+    let index = usize::try_from(index).unwrap();
+    stack.pop();
+
+    let index = std::cmp::min(index, labels.len() - 1);
+    execute_br(labels[index], stack, store)
+}
+
 fn execute_expression_internal(
     expr: &(impl InstructionSource + ?Sized),
     stack: &mut Stack,
@@ -583,42 +660,42 @@ fn execute_expression_internal(
 ) -> Result<BranchControl> {
     let mut iter = expr.iter();
     loop {
-        let ret = execute_inner_loop(&mut iter, stack, store);
-        if let Some(Ok(instruction)) = ret {
-            let branch_control = match instruction.opcode() {
-                Opcode::If => execute_if(&instruction, stack, store)?,
-                Opcode::Block => execute_block_expression(
-                    instruction.get_block_type(),
-                    false,
-                    instruction.get_block(),
-                    stack,
-                    store,
-                )?,
-                Opcode::Loop => execute_block_expression(
-                    instruction.get_block_type(),
-                    true,
-                    instruction.get_block(),
-                    stack,
-                    store,
-                )?,
-
-                Opcode::Br => execute_br(instruction.get_single_u32_as_usize_arg(), stack, store)?,
-                Opcode::BrIf => {
-                    execute_br_if(instruction.get_single_u32_as_usize_arg(), stack, store)?
-                }
-
-                _ => unimplemented!("Cannot handle {:?}", instruction), // Control instruction
-            };
-
-            // If we're branching, then propagate the branch to the caller
-            if branch_control.is_branch {
-                return Ok(branch_control);
+        let branch_control = match execute_inner_loop(&mut iter, stack, store) {
+            None => {
+                return Ok(BranchControl::no_branch());
             }
-        } else if let Some(Err(e)) = ret {
-            return Err(e);
-        } else {
-            assert!(ret.is_none());
-            return Ok(BranchControl::no_branch());
+            Some(Err(e)) => {
+                return Err(e);
+            }
+
+            Some(Ok((InstructionResult::If, instruction))) => {
+                execute_if(&instruction, stack, store)?
+            }
+            Some(Ok((InstructionResult::Block, instruction)))
+            | Some(Ok((InstructionResult::Loop, instruction))) => {
+                execute_block(&instruction, stack, store)?
+            }
+
+            Some(Ok((InstructionResult::Br, instruction))) => {
+                execute_br(instruction.get_single_u32_as_usize_arg(), stack, store)?
+            }
+            Some(Ok((InstructionResult::BrIf, instruction))) => {
+                execute_br_if(instruction.get_single_u32_as_usize_arg(), stack, store)?
+            }
+            Some(Ok((InstructionResult::BrTable, instruction))) => {
+                execute_br_table(&instruction.get_block_table_targets(), stack, store)?
+            }
+
+            Some(Ok((InstructionResult::Call, _))) => unimplemented!("Call not implemented"),
+            Some(Ok((InstructionResult::CallIndirect, _))) => {
+                unimplemented!("Call not implemented")
+            }
+            Some(Ok((InstructionResult::Return, _))) => unimplemented!("Call not implemented"),
+        };
+
+        // If we're branching, then propagate the branch to the caller
+        if branch_control.is_branch {
+            return Ok(branch_control);
         }
     }
 }

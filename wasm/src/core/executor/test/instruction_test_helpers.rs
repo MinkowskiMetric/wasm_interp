@@ -3,7 +3,7 @@ use std::convert::TryInto;
 use crate::core::{stack_entry::StackEntry, ExpressionStore, Stack};
 use crate::parser::{InstructionSource, Opcode};
 
-use super::instruction_generator::{make_expression_writer, ExpressionWriter};
+use super::instruction_generator::make_expression_writer;
 use super::test_store::*;
 
 use super::super::execute_core::execute_expression;

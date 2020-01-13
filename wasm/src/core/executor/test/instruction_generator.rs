@@ -3,65 +3,7 @@ use crate::parser::{InstructionCategory, InstructionSource, Opcode};
 
 use std::convert::TryInto;
 
-pub trait ExpressionWriter: Sized {
-    fn append_bytes(&mut self, bytes: &[u8]);
-
-    fn append_byte(&mut self, byte: u8) {
-        self.append_bytes(&[byte]);
-    }
-
-    fn write_const_instruction(&mut self, val: impl Into<StackEntry>) {
-        write_const_instruction(self, val.into());
-    }
-
-    fn write_single_byte_instruction(&mut self, opcode: Opcode) {
-        assert!(InstructionCategory::from_opcode(opcode) == InstructionCategory::SingleByte);
-        write_opcode(self, opcode);
-    }
-
-    fn write_single_leb_instruction(&mut self, opcode: Opcode, val: u64) {
-        assert!(InstructionCategory::from_opcode(opcode) == InstructionCategory::SingleLebInteger);
-        write_opcode(self, opcode);
-        write_leb(self, val, false);
-    }
-
-    fn write_two_leb_instruction(&mut self, opcode: Opcode, val1: u64, val2: u64) {
-        assert!(InstructionCategory::from_opcode(opcode) == InstructionCategory::TwoLebInteger);
-        write_opcode(self, opcode);
-        write_leb(self, val1, false);
-        write_leb(self, val2, false);
-    }
-
-    fn write_block_instruction(
-        mut self,
-        opcode: Opcode,
-        block_type: BlockType,
-    ) -> NestedExpressionWriter<Self> {
-        match InstructionCategory::from_opcode(opcode) {
-            InstructionCategory::Block(allow_else) => {
-                let require_else = allow_else && block_type != BlockType::None;
-
-                write_opcode(&mut self, opcode);
-                self.append_byte(block_type.into());
-
-                NestedExpressionWriter {
-                    parent: self,
-                    allow_else,
-                    require_else,
-                }
-            }
-            _ => panic!("Invalid instruction category - only block instructions"),
-        }
-    }
-}
-
-impl ExpressionWriter for Vec<u8> {
-    fn append_bytes(&mut self, bytes: &[u8]) {
-        self.extend_from_slice(bytes);
-    }
-}
-
-fn write_leb(expr_bytes: &mut impl ExpressionWriter, val: u64, signed: bool) {
+fn write_leb(expr_bytes: &mut Vec<u8>, val: u64, signed: bool) {
     let mut encoded_bytes: [u8; 10] = [
         (0x80 | (val & 0x7f)).try_into().unwrap(),
         (0x80 | ((val >> 7) & 0x7f)).try_into().unwrap(),
@@ -111,7 +53,7 @@ fn write_leb(expr_bytes: &mut impl ExpressionWriter, val: u64, signed: bool) {
     }
 
     // Write the bytes out as is
-    expr_bytes.append_bytes(&encoded_bytes[0..required_length]);
+    expr_bytes.extend_from_slice(&encoded_bytes[0..required_length]);
 }
 
 fn write_leb_as_vector(i: u64, signed: bool) -> Vec<u8> {
@@ -149,19 +91,19 @@ fn test_leb_writer() {
     );
 }
 
-fn write_opcode(expr_bytes: &mut impl ExpressionWriter, opcode: Opcode) {
+fn write_opcode(expr_bytes: &mut ExpressionWriter, opcode: Opcode) {
     expr_bytes.append_byte(opcode.into());
 }
 
-fn write_const_instruction(expr_bytes: &mut impl ExpressionWriter, val: StackEntry) {
+fn write_const_instruction(expr_bytes: &mut ExpressionWriter, val: StackEntry) {
     match val {
         StackEntry::I32Entry(i) => {
             expr_bytes.append_byte(Opcode::I32Const.into());
-            write_leb(expr_bytes, i.into(), true);
+            write_leb(&mut expr_bytes.bytes, i.into(), true);
         }
         StackEntry::I64Entry(i) => {
             expr_bytes.append_byte(Opcode::I64Const.into());
-            write_leb(expr_bytes, i.into(), true);
+            write_leb(&mut expr_bytes.bytes, i.into(), true);
         }
         StackEntry::F32Entry(i) => {
             expr_bytes.append_byte(Opcode::F32Const.into());
@@ -176,40 +118,112 @@ fn write_const_instruction(expr_bytes: &mut impl ExpressionWriter, val: StackEnt
     }
 }
 
-pub struct NestedExpressionWriter<T: ExpressionWriter> {
-    parent: T,
+struct ExpressionWriterStateStack {
     allow_else: bool,
     require_else: bool,
 }
 
-impl<T: ExpressionWriter> ExpressionWriter for NestedExpressionWriter<T> {
-    fn append_bytes(&mut self, bytes: &[u8]) {
-        self.parent.append_bytes(bytes);
+pub struct ExpressionWriter {
+    bytes: Vec<u8>,
+    state_stack: Vec<ExpressionWriterStateStack>,
+}
+
+pub fn make_expression_writer() -> ExpressionWriter {
+    ExpressionWriter {
+        bytes: Vec::new(),
+        state_stack: Vec::new(),
     }
 }
 
-impl<T: ExpressionWriter> NestedExpressionWriter<T> {
-    pub fn do_else(mut self) -> Self {
-        assert!(self.allow_else);
+impl InstructionSource for ExpressionWriter {
+    fn get_instruction_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
 
-        write_opcode(&mut self, Opcode::Else);
+impl ExpressionWriter {
+    fn append_bytes(&mut self, bytes: &[u8]) {
+        self.bytes.extend_from_slice(bytes);
+    }
 
-        Self {
-            parent: self.parent,
-            allow_else: false,
-            require_else: false,
+    fn append_byte(&mut self, byte: u8) {
+        self.bytes.push(byte);
+    }
+
+    pub fn write_const_instruction(&mut self, val: impl Into<StackEntry>) {
+        write_const_instruction(self, val.into());
+    }
+
+    pub fn write_single_byte_instruction(&mut self, opcode: Opcode) {
+        assert!(InstructionCategory::from_opcode(opcode) == InstructionCategory::SingleByte);
+        write_opcode(self, opcode);
+    }
+
+    pub fn write_single_leb_instruction(&mut self, opcode: Opcode, val: u64) {
+        assert!(InstructionCategory::from_opcode(opcode) == InstructionCategory::SingleLebInteger);
+        write_opcode(self, opcode);
+        write_leb(&mut self.bytes, val, false);
+    }
+
+    pub fn write_two_leb_instruction(&mut self, opcode: Opcode, val1: u64, val2: u64) {
+        assert!(InstructionCategory::from_opcode(opcode) == InstructionCategory::TwoLebInteger);
+        write_opcode(self, opcode);
+        write_leb(&mut self.bytes, val1, false);
+        write_leb(&mut self.bytes, val2, false);
+    }
+
+    pub fn write_branch_table(&mut self, opcode: Opcode, table: &[u64]) {
+        assert!(InstructionCategory::from_opcode(opcode) == InstructionCategory::BranchTable);
+        assert!(table.len() > 0);
+
+        write_opcode(self, opcode);
+        write_leb(&mut self.bytes, (table.len() - 1) as u64, false);
+        for val in table {
+            write_leb(&mut self.bytes, *val, false);
         }
     }
 
-    pub fn do_end(mut self) -> T {
-        assert!(!self.require_else);
+    pub fn write_block_instruction(mut self, opcode: Opcode, block_type: BlockType) -> Self {
+        match InstructionCategory::from_opcode(opcode) {
+            InstructionCategory::Block(allow_else) => {
+                let require_else = allow_else && block_type != BlockType::None;
+
+                write_opcode(&mut self, opcode);
+                self.append_byte(block_type.into());
+
+                self.state_stack.push(ExpressionWriterStateStack {
+                    allow_else,
+                    require_else,
+                });
+                self
+            }
+            _ => panic!("Invalid instruction category - only block instructions"),
+        }
+    }
+
+    pub fn do_else(mut self) -> Self {
+        {
+            let ExpressionWriterStateStack {
+                allow_else,
+                require_else,
+                ..
+            } = self.state_stack.last_mut().unwrap();
+            assert!(*allow_else);
+            *allow_else = false;
+            *require_else = false;
+        }
+
+        write_opcode(&mut self, Opcode::Else);
+        self
+    }
+
+    pub fn do_end(mut self) -> Self {
+        let ExpressionWriterStateStack { require_else, .. } = self.state_stack.last().unwrap();
+        assert!(!*require_else);
 
         write_opcode(&mut self, Opcode::End);
 
-        self.parent
+        self.state_stack.pop();
+        self
     }
-}
-
-pub fn make_expression_writer() -> impl ExpressionWriter + InstructionSource {
-    Vec::new()
 }
