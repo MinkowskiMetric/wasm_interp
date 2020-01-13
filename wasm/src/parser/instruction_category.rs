@@ -383,4 +383,23 @@ impl InstructionCategory {
             _ => panic!("No else block"),
         }
     }
+
+    pub fn get_block_table_targets(
+        &self,
+        acc: &impl InstructionAccumulator,
+        offset: usize,
+    ) -> Vec<usize> {
+        // There have got to be better ways to parse this.
+        let mut instr_size: usize = 1 + acc.get_leb_size_at(offset + 1);
+        let vector_length = acc.get_leb_usize_at(offset + 1);
+        let mut ret = Vec::with_capacity(vector_length + 1);
+
+        for _ in 0..(vector_length + 1) {
+            let number_size = acc.get_leb_size_at(offset + instr_size);
+            ret.push(acc.get_leb_u32_at(instr_size).try_into().unwrap());
+            instr_size += number_size;
+        }
+
+        ret
+    }
 }

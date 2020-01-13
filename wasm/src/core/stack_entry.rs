@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Error};
 use std::convert::{From, TryFrom};
 
-static INVALID_CONVERTSION_MESSAGE: &'static str = "Cannot convert stack entry";
+static INVALID_CONVERSION_MESSAGE: &'static str = "Cannot convert stack entry";
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum StackEntry {
@@ -39,7 +39,7 @@ impl TryFrom<StackEntry> for u32 {
             StackEntry::I32Entry(u) => Ok(u),
             // Should this handle the case where it is an I64Entry and the value fits? That would simplify
             // some things, but may complicate other things by not being strict enough
-            _ => Err(anyhow!(INVALID_CONVERTSION_MESSAGE)),
+            _ => Err(anyhow!(INVALID_CONVERSION_MESSAGE)),
         }
     }
 }
@@ -72,7 +72,7 @@ impl TryFrom<StackEntry> for u64 {
             StackEntry::I64Entry(u) => Ok(u),
             // Should this handle the case where it is an I32Entry? That would simplify
             // some things, but may complicate other things by not being strict enough
-            _ => Err(anyhow!(INVALID_CONVERTSION_MESSAGE)),
+            _ => Err(anyhow!(INVALID_CONVERSION_MESSAGE)),
         }
     }
 }
@@ -103,7 +103,7 @@ impl TryFrom<StackEntry> for f32 {
     fn try_from(i: StackEntry) -> Result<Self, Self::Error> {
         match i {
             StackEntry::F32Entry(f) => Ok(f),
-            _ => Err(anyhow!(INVALID_CONVERTSION_MESSAGE)),
+            _ => Err(anyhow!(INVALID_CONVERSION_MESSAGE)),
         }
     }
 }
@@ -120,7 +120,7 @@ impl TryFrom<StackEntry> for f64 {
     fn try_from(i: StackEntry) -> Result<Self, Self::Error> {
         match i {
             StackEntry::F64Entry(f) => Ok(f),
-            _ => Err(anyhow!(INVALID_CONVERTSION_MESSAGE)),
+            _ => Err(anyhow!(INVALID_CONVERSION_MESSAGE)),
         }
     }
 }

@@ -5,7 +5,7 @@ use crate::core::{
 };
 use crate::parser::Opcode;
 
-use super::instruction_generator::{make_expression_writer, ExpressionWriter};
+use super::instruction_generator::make_expression_writer;
 use super::instruction_test_helpers::*;
 use super::test_store::*;
 

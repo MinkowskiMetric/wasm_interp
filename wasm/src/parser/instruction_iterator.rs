@@ -113,6 +113,10 @@ impl<'a> Instruction<'a> {
     pub fn get_else_block<'b>(&'b self) -> &'b [u8] {
         self.cat.get_else_block(&self.acc, 0, &self.data)
     }
+
+    pub fn get_block_table_targets(&self) -> Vec<usize> {
+        self.cat.get_block_table_targets(&self.acc, 0)
+    }
 }
 
 pub struct InstructionIterator<'a, Source: InstructionSource + ?Sized> {
