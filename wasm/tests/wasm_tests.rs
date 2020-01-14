@@ -91,7 +91,7 @@ fn test_load_module() -> std::result::Result<(), String> {
             );
             assert_eq!(
                 exported_value_fib7.borrow().get_value().clone(),
-                7u32.into()
+                13_u32.into()
             );
 
             let exported_value_zero = match &m.exports["zero"] {

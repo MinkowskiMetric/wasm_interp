@@ -1,14 +1,14 @@
 use crate::core::{execute_expression, Expr, ExpressionStore, Func, FuncType, Locals, Stack};
 use anyhow::Result;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WasmExprCallable {
     func_type: FuncType,
     locals: Vec<Locals>,
     expr: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Callable {
     WasmExpr(WasmExprCallable),
 }
@@ -23,10 +23,14 @@ impl Callable {
 
 impl WasmExprCallable {
     pub fn new(func_type: FuncType, func: Func) -> Callable {
+        Self::new_base(func_type, func.locals().clone(), func.expr().clone())
+    }
+
+    pub fn new_base(func_type: FuncType, locals: Vec<Locals>, expr: Expr) -> Callable {
         Callable::WasmExpr(Self {
             func_type,
-            locals: func.locals().clone(),
-            expr: func.expr().clone(),
+            locals,
+            expr,
         })
     }
 
