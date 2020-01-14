@@ -1,4 +1,7 @@
-use crate::core::{executor::execute_expression, stack_entry::StackEntry, BlockType, Stack};
+use crate::core::{
+    executor::execute_expression, stack_entry::StackEntry, BlockType, FuncType, Locals, Stack,
+    ValueType,
+};
 use crate::parser::Opcode;
 
 use super::instruction_generator::*;
@@ -172,4 +175,34 @@ fn test_branch_table() {
             (MAX_DEPTH - std::cmp::min(jump_target, MAX_DEPTH - 1)).into()
         );
     }
+}
+
+#[test]
+fn test_call() {
+    let mut stack = Stack::new();
+    let mut store = TestStore::new();
+
+    let mut func_writer = make_expression_writer();
+    func_writer.write_single_leb_instruction(Opcode::LocalGet, 0);
+    func_writer.write_single_leb_instruction(Opcode::LocalGet, 1);
+    func_writer.write_single_byte_instruction(Opcode::I32Add);
+    func_writer.write_single_leb_instruction(Opcode::LocalTee, 2);
+
+    assert_eq!(
+        store.add_function(
+            func_writer,
+            FuncType::new(vec![ValueType::I32, ValueType::I32], vec![ValueType::I32]),
+            vec![Locals::new(1, ValueType::I32)]
+        ),
+        0
+    );
+
+    let mut test_writer = make_expression_writer();
+    test_writer.write_const_instruction(26_i32);
+    test_writer.write_const_instruction(17_i32);
+    test_writer.write_single_leb_instruction(Opcode::Call, 0);
+
+    assert!(execute_expression(&test_writer, &mut stack, &mut store).is_ok());
+    assert_eq!(stack.working_count(), 1);
+    assert_eq!(stack.working_top(1)[0], 43_i32.into());
 }

@@ -21,10 +21,7 @@
 
   (func $init_fib7
     (global.set $fib7
-      (i32.add
-        (i32.const 8)
-        (i32.const -1)
-      )
+      (call $fib (i32.const 7))
     )
   )
 

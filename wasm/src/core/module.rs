@@ -446,6 +446,7 @@ impl ConstantExpressionStore for Module {
 
 impl ExpressionStore for Module {
     type GlobalRefMut = CellRefMutType<Global>;
+    type CallableRef = CellRefType<Callable>;
     type MemoryRef = CellRefType<Memory>;
     type MemoryRefMut = CellRefMutType<Memory>;
 
@@ -454,6 +455,14 @@ impl ExpressionStore for Module {
             Ok(self.globals[idx].borrow_mut())
         } else {
             Err(anyhow!("Global index out of range"))
+        }
+    }
+
+    fn callable_idx<'a>(&'a self, idx: usize) -> Result<Ref<'a, Callable>> {
+        if idx < self.functions.len() {
+            Ok(self.functions[idx].borrow())
+        } else {
+            Err(anyhow!("Callable index out of range"))
         }
     }
 

@@ -1,5 +1,5 @@
 use crate::{
-    core::BlockType,
+    core::{BlockType, Expr},
     parser::{self, InstructionAccumulator, InstructionData},
 };
 use anyhow::{anyhow, Result};
@@ -213,6 +213,12 @@ pub trait InstructionSource {
 
     fn iter<'a>(&'a self) -> InstructionIterator<'a, Self> {
         InstructionIterator::new(&self)
+    }
+
+    fn as_expr(&self) -> Expr {
+        let mut e = Vec::new();
+        e.extend_from_slice(self.get_instruction_bytes());
+        Expr::new(e)
     }
 }
 

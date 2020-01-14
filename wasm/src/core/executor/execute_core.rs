@@ -252,7 +252,7 @@ fn execute_single_instruction(
 
         Opcode::LocalGet => {
             let local_idx = instruction.get_single_u32_as_usize_arg();
-            if local_idx >= stack.local_count() {
+            if local_idx >= stack.parameter_count() + stack.local_count() {
                 return Err(anyhow!("Local index out of range"));
             }
 
@@ -263,7 +263,7 @@ fn execute_single_instruction(
             stack.pop();
 
             let local_idx = instruction.get_single_u32_as_usize_arg();
-            if local_idx >= stack.local_count() {
+            if local_idx >= stack.parameter_count() + stack.local_count() {
                 return Err(anyhow!("Local index out of range"));
             }
 
@@ -653,6 +653,16 @@ fn execute_br_table(
     execute_br(labels[index], stack, store)
 }
 
+fn execute_call(
+    idx: usize,
+    stack: &mut Stack,
+    store: &mut impl ExpressionStore,
+) -> Result<BranchControl> {
+    let callable = store.callable_idx(idx)?.clone();
+    callable.call(stack, store)?;
+    Ok(BranchControl::no_branch())
+}
+
 fn execute_expression_internal(
     expr: &(impl InstructionSource + ?Sized),
     stack: &mut Stack,
@@ -686,7 +696,9 @@ fn execute_expression_internal(
                 execute_br_table(&instruction.get_block_table_targets(), stack, store)?
             }
 
-            Some(Ok((InstructionResult::Call, _))) => unimplemented!("Call not implemented"),
+            Some(Ok((InstructionResult::Call, instruction))) => {
+                execute_call(instruction.get_single_u32_as_usize_arg(), stack, store)?
+            }
             Some(Ok((InstructionResult::CallIndirect, _))) => {
                 unimplemented!("Call not implemented")
             }
