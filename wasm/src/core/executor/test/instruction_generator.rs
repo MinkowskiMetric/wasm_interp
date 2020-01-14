@@ -113,8 +113,6 @@ fn write_const_instruction(expr_bytes: &mut ExpressionWriter, val: StackEntry) {
             expr_bytes.append_byte(Opcode::F64Const.into());
             expr_bytes.append_bytes(&i.to_le_bytes());
         }
-
-        _ => panic!("Unsupported stack entry type"),
     }
 }
 

@@ -386,32 +386,29 @@ fn test_locals_ops() {
     let mut stack = Stack::new();
     let mut store = TestStore::new();
 
-    // Create a frame with room for five locals
-    // TODOTODOTODO - this is actually nonsense. Locals are typed by the function that
-    // creates them, and so therefore the "unused" stack entry value is completely unnecessary.
-    // For now, however, I will work with what I have because there is no need to fix the frame
-    // typing until I implement function calls.
-    stack.push_frame(0, 5);
+    // Create a frame with room for five locals. The test frame initializes all of the locals
+    // to I32Entry(0)
+    assert!(stack.push_test_frame(5).is_ok());
 
     assert_eq!(
         do_local_get(&mut stack, &mut store, 0),
-        Some(StackEntry::Unused)
+        Some(StackEntry::I32Entry(0))
     );
     assert_eq!(
         do_local_get(&mut stack, &mut store, 1),
-        Some(StackEntry::Unused)
+        Some(StackEntry::I32Entry(0))
     );
     assert_eq!(
         do_local_get(&mut stack, &mut store, 2),
-        Some(StackEntry::Unused)
+        Some(StackEntry::I32Entry(0))
     );
     assert_eq!(
         do_local_get(&mut stack, &mut store, 3),
-        Some(StackEntry::Unused)
+        Some(StackEntry::I32Entry(0))
     );
     assert_eq!(
         do_local_get(&mut stack, &mut store, 4),
-        Some(StackEntry::Unused)
+        Some(StackEntry::I32Entry(0))
     );
     assert_eq!(do_local_get(&mut stack, &mut store, 5), None);
 

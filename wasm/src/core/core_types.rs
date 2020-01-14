@@ -318,6 +318,14 @@ impl Locals {
     pub fn new(n: u32, t: ValueType) -> Self {
         Self { n, t }
     }
+
+    pub fn count(&self) -> u32 {
+        self.n
+    }
+
+    pub fn value_type(&self) -> ValueType {
+        self.t.clone()
+    }
 }
 
 #[derive(Debug, Clone)]
