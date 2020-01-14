@@ -165,7 +165,7 @@ impl GlobalType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuncType {
     arg_types: Vec<ValueType>,
     ret_types: Vec<ValueType>,

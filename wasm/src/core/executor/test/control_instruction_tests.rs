@@ -1,8 +1,8 @@
 use crate::core::{
     executor::execute_expression, stack_entry::StackEntry, BlockType, FuncType, Locals, Stack,
-    ValueType,
+    Table, ValueType, WasmExprCallable,
 };
-use crate::parser::Opcode;
+use crate::parser::{InstructionSource, Opcode};
 
 use super::instruction_generator::*;
 use super::instruction_test_helpers::*;
@@ -205,4 +205,71 @@ fn test_call() {
     assert!(execute_expression(&test_writer, &mut stack, &mut store).is_ok());
     assert_eq!(stack.working_count(), 1);
     assert_eq!(stack.working_top(1)[0], 43_i32.into());
+}
+
+#[test]
+fn test_indirect_call() {
+    let mut stack = Stack::new();
+    let mut store = TestStore::new();
+
+    let func_type = FuncType::new(vec![ValueType::I32, ValueType::I32], vec![ValueType::I32]);
+    let mut table = Table::new_from_bounds(128, None);
+
+    let functions: Vec<_> = (0..128_u32)
+        .into_iter()
+        .map(|i| {
+            let mut expr = make_expression_writer();
+
+            // Check the second argument. If it is zero, then return the function index
+            expr.write_single_leb_instruction(Opcode::LocalGet, 1);
+            expr.write_single_byte_instruction(Opcode::I32Eqz);
+
+            // If the argument is zero then return
+            let mut if_expr = expr.write_block_instruction(Opcode::If, BlockType::None);
+            if_expr.write_const_instruction(i);
+            if_expr.write_single_byte_instruction(Opcode::Return);
+
+            let mut expr = if_expr.do_end();
+
+            // Otherwise, add the first argument to the function index
+            expr.write_single_leb_instruction(Opcode::LocalGet, 0);
+            expr.write_const_instruction(i);
+            expr.write_single_byte_instruction(Opcode::I32Add);
+
+            use std::{cell::RefCell, rc::Rc};
+            Rc::new(RefCell::new(WasmExprCallable::new_base(
+                func_type.clone(),
+                vec![],
+                expr.as_expr(),
+            )))
+        })
+        .collect();
+
+    table.set_entries(0, &functions);
+
+    store.set_func_types(vec![func_type]);
+    store.set_table(table);
+
+    for do_add in [true, false].iter() {
+        for index in 0..128_u32 {
+            let mut expr = make_expression_writer();
+
+            expr.write_const_instruction(index);
+            expr.write_const_instruction(if *do_add { 1_u32 } else { 0_u32 });
+            expr.write_const_instruction(index);
+            expr.write_two_leb_instruction(Opcode::CallIndirect, 0, 0);
+
+            assert!(execute_expression(&expr, &mut stack, &mut store).is_ok());
+            assert_eq!(stack.working_count(), 1);
+            assert_eq!(
+                stack.working_top(1)[0],
+                if *do_add {
+                    (2 * index).into()
+                } else {
+                    index.into()
+                }
+            );
+            stack.pop()
+        }
+    }
 }

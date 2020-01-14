@@ -10,8 +10,8 @@ use std::rc::Rc;
 use crate::core::{
     self, evaluate_constant_expression,
     stack_entry::StackEntry,
-    store_access::{CellRefMutType, CellRefType},
-    Callable, ConstantExpressionStore, ExpressionStore, Global, Memory, Stack, Table,
+    store_access::{CellRefMutType, CellRefType, RefType},
+    Callable, ConstantExpressionStore, ExpressionStore, FuncType, Global, Memory, Stack, Table,
 };
 use crate::parser::InstructionSource;
 use crate::reader::{ModuleBuilder, ReaderUtil, ScopedReader, TypeReader};
@@ -151,6 +151,7 @@ pub struct Module {
     pub memories: Vec<Rc<RefCell<Memory>>>,
     pub globals: Vec<Rc<RefCell<Global>>>,
     pub exports: HashMap<String, ExportValue>,
+    func_types: Vec<FuncType>,
 }
 
 impl Module {
@@ -161,6 +162,7 @@ impl Module {
             memories: Vec::new(),
             globals: Vec::new(),
             exports: HashMap::new(),
+            func_types: Vec::new(),
         }
     }
 
@@ -313,6 +315,11 @@ impl Module {
         Ok(())
     }
 
+    fn add_func_types(&mut self, func_types: Vec<FuncType>) -> Result<()> {
+        self.func_types = func_types;
+        Ok(())
+    }
+
     fn pre_execute_validate(&self) -> Result<()> {
         if self.tables.len() > 1 {
             Err(anyhow!("Too many tables"))
@@ -406,6 +413,7 @@ impl Module {
         ret_module.add_memories(module.mems.into_iter())?;
         ret_module.add_globals(module.globals.into_iter())?;
         ret_module.collect_exports(module.exports.into_iter())?;
+        ret_module.add_func_types(module.metadata.types)?;
 
         // Everything prior to this point is setting up the environment so that we
         // can start executing things, so make sure that everything is sane once we're
@@ -446,6 +454,8 @@ impl ConstantExpressionStore for Module {
 
 impl ExpressionStore for Module {
     type GlobalRefMut = CellRefMutType<Global>;
+    type FuncTypeRef = RefType<FuncType>;
+    type TableRef = CellRefType<Table>;
     type CallableRef = CellRefType<Callable>;
     type MemoryRef = CellRefType<Memory>;
     type MemoryRefMut = CellRefMutType<Memory>;
@@ -455,6 +465,22 @@ impl ExpressionStore for Module {
             Ok(self.globals[idx].borrow_mut())
         } else {
             Err(anyhow!("Global index out of range"))
+        }
+    }
+
+    fn func_type_idx<'a>(&'a self, idx: usize) -> Result<&'a FuncType> {
+        if idx < self.func_types.len() {
+            Ok(&self.func_types[idx])
+        } else {
+            Err(anyhow!("FuncType index out of range"))
+        }
+    }
+
+    fn table_idx<'a>(&'a self, idx: usize) -> Result<Ref<'a, Table>> {
+        if idx < self.tables.len() {
+            Ok(self.tables[idx].borrow())
+        } else {
+            Err(anyhow!("Table index out of range"))
         }
     }
 
