@@ -42,7 +42,7 @@ pub fn test_no_return_expression_impl(expr: impl InstructionSource) -> Option<()
 
     // We push a frame onto the stack. This helps the expressions in the case they might need
     // to use a block
-    stack.push_frame(0, 0);
+    assert!(stack.push_test_frame(0).is_ok());
 
     if let Err(_) = execute_expression(&expr, &mut stack, &mut test_store) {
         None
@@ -69,7 +69,7 @@ pub fn test_single_return_expression_impl(expr: impl InstructionSource) -> Optio
 
     // We push a frame onto the stack. This helps the expressions in the case they might need
     // to use a block
-    stack.push_frame(0, 0);
+    assert!(stack.push_test_frame(0).is_ok());
 
     if let Err(_) = execute_expression(&expr, &mut stack, &mut test_store) {
         None

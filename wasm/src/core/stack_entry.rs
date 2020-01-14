@@ -5,7 +5,6 @@ static INVALID_CONVERSION_MESSAGE: &'static str = "Cannot convert stack entry";
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum StackEntry {
-    Unused,
     I32Entry(u32),
     I64Entry(u64),
     F32Entry(f32),
@@ -15,8 +14,7 @@ pub enum StackEntry {
 impl StackEntry {
     pub fn is_same_type(&self, other: &StackEntry) -> bool {
         match (self, other) {
-            (StackEntry::Unused, StackEntry::Unused)
-            | (StackEntry::I32Entry(_), StackEntry::I32Entry(_))
+            (StackEntry::I32Entry(_), StackEntry::I32Entry(_))
             | (StackEntry::I64Entry(_), StackEntry::I64Entry(_))
             | (StackEntry::F32Entry(_), StackEntry::F32Entry(_))
             | (StackEntry::F64Entry(_), StackEntry::F64Entry(_)) => true,
@@ -159,7 +157,6 @@ mod test {
 
         assert_eq!(StackEntry::from(32.0f64), StackEntry::F64Entry(32.0));
 
-        assert!(u32::try_from(StackEntry::Unused).is_err());
         assert_eq!(u32::try_from(StackEntry::I32Entry(32)).ok(), Some(32));
         assert_eq!(
             u32::try_from(StackEntry::I32Entry(0xFFFFFFFF)).ok(),
@@ -182,7 +179,6 @@ mod test {
         assert!(u32::try_from(StackEntry::F32Entry(32.0)).is_err());
         assert!(u32::try_from(StackEntry::F64Entry(32.0)).is_err());
 
-        assert!(u64::try_from(StackEntry::Unused).is_err());
         assert!(u64::try_from(StackEntry::I32Entry(32)).is_err());
         assert_eq!(u64::try_from(StackEntry::I64Entry(32)).ok(), Some(32));
         assert_eq!(
@@ -204,13 +200,11 @@ mod test {
         assert!(u64::try_from(StackEntry::F32Entry(32.0)).is_err());
         assert!(u64::try_from(StackEntry::F64Entry(32.0)).is_err());
 
-        assert!(f32::try_from(StackEntry::Unused).is_err());
         assert!(f32::try_from(StackEntry::I32Entry(32)).is_err());
         assert!(f32::try_from(StackEntry::I64Entry(32)).is_err());
         assert_eq!(f32::try_from(StackEntry::F32Entry(32.0)).ok(), Some(32.0));
         assert!(f32::try_from(StackEntry::F64Entry(32.0)).is_err());
 
-        assert!(f64::try_from(StackEntry::Unused).is_err());
         assert!(f64::try_from(StackEntry::I32Entry(32)).is_err());
         assert!(f64::try_from(StackEntry::I64Entry(32)).is_err());
         assert!(f64::try_from(StackEntry::F32Entry(32.0)).is_err());

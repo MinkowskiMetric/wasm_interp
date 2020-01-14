@@ -112,7 +112,7 @@ fn test_loop_block() {
     let mut store = TestStore::new();
 
     // We push a frame onto the stack with the one local we use
-    stack.push_frame(0, 1);
+    assert!(stack.push_test_frame(1).is_ok());
 
     assert!(execute_expression(&expr, &mut stack, &mut store).is_ok());
     assert_eq!(stack.working_count(), 1);
@@ -163,7 +163,7 @@ fn test_branch_table() {
         let mut store = TestStore::new();
 
         // We push a frame onto the stack with the one local we use
-        stack.push_frame(0, 2);
+        assert!(stack.push_test_frame(2).is_ok());
 
         assert!(execute_expression(&expr, &mut stack, &mut store).is_ok());
         assert_eq!(stack.working_count(), 1);

@@ -1,4 +1,56 @@
-use crate::core::stack_entry::StackEntry;
+use crate::core::{stack_entry::StackEntry, FuncType, Locals, ValueType};
+use anyhow::{anyhow, Result};
+
+struct LocalsFlatteningIterator<'a, T: Iterator<Item = &'a Locals>> {
+    iter: T,
+    current: Option<&'a Locals>,
+    remaining: u32,
+}
+
+impl<'a, T: Iterator<Item = &'a Locals>> Iterator for LocalsFlatteningIterator<'a, T> {
+    type Item = Locals;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self {
+                LocalsFlatteningIterator { current: None, .. }
+                | LocalsFlatteningIterator {
+                    current: Some(_),
+                    remaining: 0,
+                    ..
+                } => {
+                    self.current = self.iter.next();
+                    self.remaining = self.current.map_or(0, |l| l.count());
+
+                    // If we got none back from the parent, then stop looping now
+                    if self.current.is_none() {
+                        return None;
+                    }
+                }
+
+                LocalsFlatteningIterator {
+                    current: Some(locals),
+                    remaining,
+                    ..
+                } => {
+                    // Decrement the remaining count
+                    self.remaining = *remaining - 1;
+
+                    // Return a single local entry
+                    return Some(Locals::new(1, locals.value_type()));
+                }
+            }
+        }
+    }
+}
+
+fn flatten_locals<'a, T: Iterator<Item = &'a Locals>>(iter: T) -> LocalsFlatteningIterator<'a, T> {
+    LocalsFlatteningIterator {
+        iter,
+        current: None,
+        remaining: 0,
+    }
+}
 
 #[derive(Debug)]
 struct StackLabel {
@@ -12,15 +64,22 @@ pub struct StackFrame {
     parameter_count: usize,
     local_count: usize,
     label_stack: Vec<StackLabel>,
+    return_types: Vec<ValueType>,
 }
 
 impl StackFrame {
-    pub fn new(sp: usize, parameter_count: usize, local_count: usize) -> Self {
+    pub fn new(
+        sp: usize,
+        parameter_count: usize,
+        local_count: usize,
+        return_types: Vec<ValueType>,
+    ) -> Self {
         Self {
             sp,
             parameter_count,
             local_count,
             label_stack: Vec::new(),
+            return_types,
         }
     }
 
@@ -89,7 +148,6 @@ impl StackFrame {
 pub struct Stack {
     frames: Vec<StackFrame>,
     entries: Vec<StackEntry>,
-    stack_height: usize,
 }
 
 impl Stack {
@@ -98,18 +156,17 @@ impl Stack {
         Stack {
             frames: Vec::new(),
             entries: Vec::new(),
-            stack_height: 0,
         }
     }
 
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
-        self.stack_height == 0
+        self.entries.is_empty()
     }
 
     #[allow(dead_code)]
     pub fn height(&self) -> usize {
-        self.stack_height
+        self.entries.len()
     }
 
     fn last_frame<R: Default, F: Fn(&StackFrame) -> R>(&self, func: F) -> R {
@@ -206,38 +263,26 @@ impl Stack {
 
     #[allow(dead_code)]
     pub fn push(&mut self, entry: StackEntry) {
-        // Ensure that there is room for the item
-        self.ensure_entries(1);
-
-        // Place the entry on the stack, then increment the height
-        self.entries[self.stack_height] = entry;
-        self.stack_height += 1;
+        self.entries.push(entry);
     }
 
     #[allow(dead_code)]
     pub fn push_from_slice(&mut self, entries: &[StackEntry]) {
-        self.ensure_entries(entries.len());
-
-        self.entries[self.stack_height..].copy_from_slice(entries);
-        self.stack_height += entries.len();
+        self.entries.extend_from_slice(entries);
     }
 
     #[allow(dead_code)]
     pub fn pop(&mut self) {
         assert!(self.working_count() > 0);
 
-        self.stack_height -= 1;
-        self.entries[self.stack_height] = StackEntry::Unused;
+        self.entries.pop();
     }
 
     #[allow(dead_code)]
     pub fn pop_n(&mut self, n: usize) {
         assert!(self.working_count() >= n);
 
-        self.stack_height -= n;
-        for e in self.entries[self.stack_height..self.stack_height + n].iter_mut() {
-            *e = StackEntry::Unused;
-        }
+        self.entries.truncate(self.entries.len() - n);
     }
 
     pub fn drop_entries(&mut self, to_drop: usize, arity: usize) {
@@ -246,57 +291,119 @@ impl Stack {
         let old_result_base = self.working_limit() - arity;
         let new_result_base = old_result_base - to_drop;
 
-        self.stack_height -= to_drop;
+        let new_len = self.entries.len() - to_drop;
 
         for i in 0..arity {
             self.entries[new_result_base + i] = self.entries[old_result_base + i];
         }
 
-        for i in arity..arity + to_drop {
-            self.entries[new_result_base + i] = StackEntry::Unused;
+        self.entries.truncate(new_len);
+    }
+
+    #[cfg(test)]
+    pub fn push_test_frame(&mut self, local_count: u32) -> Result<()> {
+        let func_type = FuncType::new(vec![], vec![]);
+        let locals = vec![Locals::new(local_count, ValueType::I32)];
+        self.push_typed_frame(&func_type, &locals)
+    }
+
+    pub fn push_typed_frame(&mut self, func_type: &FuncType, locals: &Vec<Locals>) -> Result<()> {
+        let arg_count = func_type.arg_types().len();
+        let local_count = locals.iter().map(|l| l.count() as usize).sum();
+        if arg_count > self.working_count() {
+            Err(anyhow!("Not enough arguments on working stack"))
+        } else {
+            let working_params = self.working_top(arg_count);
+            let matched_args: Result<Vec<_>> = func_type
+                .arg_types()
+                .iter()
+                .enumerate()
+                .zip(working_params)
+                .map(|((idx, arg_type), stack_entry)| -> Result<()> {
+                    match (idx, arg_type, stack_entry) {
+                        (_, ValueType::I32, StackEntry::I32Entry(_))
+                        | (_, ValueType::I64, StackEntry::I64Entry(_))
+                        | (_, ValueType::F32, StackEntry::F32Entry(_))
+                        | (_, ValueType::F64, StackEntry::F64Entry(_)) => Ok(()),
+                        (idx, ..) => Err(anyhow!("Argument {} type does not match", idx)),
+                    }
+                })
+                .collect();
+
+            match matched_args {
+                Err(e) => Err(e),
+                _ => {
+                    let frame = StackFrame::new(
+                        self.height() - arg_count,
+                        arg_count,
+                        local_count,
+                        func_type.return_types().clone(),
+                    );
+
+                    // Push on zeroed out entries for the locals
+                    for (_, l) in flatten_locals(locals.iter()).enumerate() {
+                        debug_assert!(l.count() == 1);
+                        self.push(match l.value_type() {
+                            ValueType::I32 => StackEntry::I32Entry(0),
+                            ValueType::I64 => StackEntry::I64Entry(0),
+                            ValueType::F32 => StackEntry::F32Entry(0.0),
+                            ValueType::F64 => StackEntry::F64Entry(0.0),
+                        });
+                    }
+
+                    // Now push the frame
+                    self.frames.push(frame);
+
+                    Ok(())
+                }
+            }
         }
     }
 
-    pub fn push_frame(&mut self, parameter_count: usize, local_count: usize) {
-        assert!(self.working_count() >= parameter_count);
+    pub fn pop_typed_frame(&mut self) -> Result<()> {
+        let last_frame = self.frames.last().unwrap();
+        let return_types = &last_frame.return_types;
 
-        let frame = StackFrame::new(
-            self.height() - parameter_count,
-            parameter_count,
-            local_count,
-        );
+        if self.working_count() < return_types.len() {
+            Err(anyhow!("Insufficient return values"))
+        } else {
+            let working_ret = self.working_top(return_types.len());
+            let matched_ret: Result<Vec<_>> = return_types
+                .iter()
+                .enumerate()
+                .zip(working_ret)
+                .map(|((idx, arg_type), stack_entry)| -> Result<()> {
+                    match (idx, arg_type, stack_entry) {
+                        (_, ValueType::I32, StackEntry::I32Entry(_))
+                        | (_, ValueType::I64, StackEntry::I64Entry(_))
+                        | (_, ValueType::F32, StackEntry::F32Entry(_))
+                        | (_, ValueType::F64, StackEntry::F64Entry(_)) => Ok(()),
+                        (idx, ..) => Err(anyhow!("Argument {} type does not match", idx)),
+                    }
+                })
+                .collect();
 
-        // For safety, we ensure that there are enough entries on the stack before
-        // we push the frame - otherwise if pushing the frame were to fail we could
-        // end up in an inconsistent state
-        self.ensure_entries(local_count);
+            match matched_ret {
+                Err(e) => Err(e),
+                _ => {
+                    let arity = return_types.len();
+                    let old_result_base = self.working_limit() - arity;
+                    let new_result_base = self.frame_base();
 
-        // Now push the frame
-        self.frames.push(frame);
+                    let new_len = self.frame_base() + arity;
 
-        // Finally, update the stack height. This can't fail since it is just an add.
-        self.stack_height += local_count;
-    }
+                    // Pop the frame entry off the stack now as we don't need it any more
+                    self.frames.pop();
 
-    pub fn pop_frame(&mut self, arity: usize) {
-        assert!(!self.frames.is_empty());
-        assert!(self.working_count() >= arity);
+                    for i in 0..arity {
+                        self.entries[new_result_base + i] = self.entries[old_result_base + i];
+                    }
 
-        let old_result_base = self.working_limit() - arity;
-        let new_result_base = self.frame_base();
-        let clear_limit = self.frame_limit();
+                    self.entries.truncate(new_len);
 
-        self.stack_height = self.frame_base() + arity;
-
-        // Pop the frame entry off the stack now as we don't need it any more
-        self.frames.pop();
-
-        for i in 0..arity {
-            self.entries[new_result_base + i] = self.entries[old_result_base + i];
-        }
-
-        for i in new_result_base + arity..clear_limit {
-            self.entries[i] = StackEntry::Unused;
+                    Ok(())
+                }
+            }
         }
     }
 
@@ -311,20 +418,6 @@ impl Stack {
         let (sp, arity) = self.frames.last_mut().unwrap().pop_n_labels(count);
         self.drop_entries((self.height() - sp) - arity, arity);
     }
-
-    fn ensure_entries(&mut self, n: usize) {
-        assert!(self.stack_height <= self.entries.len());
-
-        let required_entries = self.stack_height + n;
-        if required_entries > self.entries.len() {
-            let entries_to_add = required_entries - self.entries.len();
-
-            if entries_to_add > 0 {
-                self.entries
-                    .extend((0..entries_to_add).map(|_| StackEntry::Unused));
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -333,8 +426,17 @@ mod test {
 
     use std::convert::TryFrom;
 
-    fn push_test_frame(stack: &mut Stack, parameter_count: usize, local_count: usize) {
-        stack.push_frame(parameter_count, local_count)
+    fn push_test_frame(
+        stack: &mut Stack,
+        params: &[ValueType],
+        local_count: u32,
+        ret_types: &[ValueType],
+    ) -> Result<()> {
+        let params: Vec<_> = params.iter().map(|x| x.clone()).collect();
+        let func_type = FuncType::new(params, ret_types.iter().map(|x| x.clone()).collect());
+        let locals = vec![Locals::new(local_count, ValueType::I32)];
+
+        stack.push_typed_frame(&func_type, &locals)
     }
 
     fn check_stack_ranges(stack: &Stack) -> (usize, usize, usize, usize) {
@@ -377,7 +479,7 @@ mod test {
     #[test]
     fn test_no_parameters_frame() {
         let mut stack = Stack::new();
-        push_test_frame(&mut stack, 0, 4);
+        assert!(push_test_frame(&mut stack, &[], 4, &[]).is_ok());
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 0);
@@ -391,7 +493,7 @@ mod test {
 
         // Modify the locals
         for i in 0..4 {
-            assert_eq!(stack.frame()[i], StackEntry::Unused);
+            assert_eq!(stack.frame()[i], StackEntry::I32Entry(0));
             assert!(std::ptr::eq(&stack.frame()[i], &stack.local()[i]));
 
             stack.local_mut()[i] = u32::try_from(i).unwrap().into();
@@ -480,7 +582,7 @@ mod test {
         assert_eq!(stack.frame()[4], 32.0f64.into());
 
         // Now push another frame, this time taking one parameter
-        push_test_frame(&mut stack, 1, 4);
+        assert!(push_test_frame(&mut stack, &[ValueType::F64], 4, &[ValueType::F64]).is_ok());
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 4);
@@ -496,7 +598,7 @@ mod test {
         assert_eq!(stack.frame()[5], 42f64.into());
 
         // Now pop the frame
-        stack.pop_frame(1);
+        assert!(stack.pop_typed_frame().is_ok());
 
         assert_eq!(stack.is_empty(), false);
         assert_eq!(stack.frame_base(), 0);
@@ -537,5 +639,67 @@ mod test {
             stack.working_top(3),
             [42f64.into(), 43f64.into(), 44f64.into()]
         );
+    }
+
+    #[test]
+    fn test_typed_frame() {
+        let func_type = FuncType::new(
+            vec![ValueType::I64, ValueType::F32],
+            vec![ValueType::F64, ValueType::F64],
+        );
+        let locals: Vec<Locals> = vec![
+            Locals::new(3, ValueType::I64),
+            Locals::new(2, ValueType::F32),
+        ];
+
+        let mut stack = Stack::new();
+
+        // This will fail because there are not enough arguments on the stack
+        assert_eq!(check_stack_ranges(&stack), (0, 0, 0, 0));
+        assert!(stack.push_typed_frame(&func_type, &locals).is_err());
+        assert_eq!(check_stack_ranges(&stack), (0, 0, 0, 0));
+
+        stack.push(0_u32.into());
+        stack.push(0_u32.into());
+        // This will fail because the parameters are the wrong types
+        assert_eq!(check_stack_ranges(&stack), (0, 0, 0, 2));
+        assert!(stack.push_typed_frame(&func_type, &locals).is_err());
+        assert_eq!(check_stack_ranges(&stack), (0, 0, 0, 2));
+
+        stack.pop_n(2);
+        stack.push(17_i64.into());
+        stack.push(18_f32.into());
+        // Now it should be OK
+        assert_eq!(check_stack_ranges(&stack), (0, 0, 0, 2));
+        assert!(stack.push_typed_frame(&func_type, &locals).is_ok());
+        assert_eq!(check_stack_ranges(&stack), (2, 5, 0, 0));
+
+        // Check the locals have been initialized correctly
+        assert_eq!(stack.local()[0], 17_i64.into());
+        assert_eq!(stack.local()[1], 18_f32.into());
+        assert_eq!(stack.local()[2], 0_u64.into());
+        assert_eq!(stack.local()[3], 0_u64.into());
+        assert_eq!(stack.local()[4], 0_u64.into());
+        assert_eq!(stack.local()[5], 0_f32.into());
+        assert_eq!(stack.local()[6], 0_f32.into());
+
+        // At this point, popping the frame should fail because insufficient return values
+        assert!(stack.pop_typed_frame().is_err());
+        assert_eq!(check_stack_ranges(&stack), (2, 5, 0, 0));
+
+        stack.push(0_u32.into());
+        stack.push(0_u32.into());
+        // This will fail because the parameters are the wrong type
+        assert!(stack.pop_typed_frame().is_err());
+        assert_eq!(check_stack_ranges(&stack), (2, 5, 0, 2));
+
+        stack.pop_n(2);
+        stack.push(26.0_f64.into());
+        stack.push(52.0_f64.into());
+        // This should succeed
+        assert!(stack.pop_typed_frame().is_ok());
+        assert_eq!(check_stack_ranges(&stack), (0, 0, 0, 2));
+        assert_eq!(stack.working_top(2)[0], 26.0_f64.into());
+        assert_eq!(stack.working_top(2)[1], 52.0_f64.into());
     }
 }
