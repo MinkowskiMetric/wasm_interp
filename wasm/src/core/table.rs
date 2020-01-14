@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use std::{
     cell::RefCell,
     ops::{Index, IndexMut},
@@ -28,6 +29,10 @@ impl Table {
             Limits::Unbounded(minimum_entries) => (*minimum_entries, None),
         };
 
+        Self::new_from_bounds(minimum_entries, maximum_entries)
+    }
+
+    pub fn new_from_bounds(minimum_entries: usize, maximum_entries: Option<usize>) -> Self {
         let mut entries = Vec::with_capacity(minimum_entries);
         for _ in 0..minimum_entries {
             entries.push(None)
@@ -54,6 +59,17 @@ impl Table {
     #[allow(dead_code)]
     pub fn current_size(&self) -> usize {
         self.entries.len()
+    }
+
+    pub fn get_entry(&self, idx: usize) -> Result<RefCallable> {
+        if idx < self.entries.len() {
+            match &self.entries[idx] {
+                Some(callable) => Ok(callable.clone()),
+                _ => Err(anyhow!("Table entry {} is not defined", idx)),
+            }
+        } else {
+            Err(anyhow!("Table index {} is out of range", idx))
+        }
     }
 
     pub fn set_entries(&mut self, offset: usize, functions: &[RefCallable]) {

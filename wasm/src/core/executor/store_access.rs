@@ -1,4 +1,4 @@
-use crate::core::{stack_entry::StackEntry, Callable, Global, Memory};
+use crate::core::{stack_entry::StackEntry, Callable, FuncType, Global, Memory, Table};
 use anyhow::Result;
 use std::{
     cell::{Ref, RefMut},
@@ -58,6 +58,10 @@ pub trait ConstantExpressionStore {
 pub trait ExpressionStore: ConstantExpressionStore {
     type GlobalRefMut: for<'a> LifetimeToRefMut<'a, Global>;
 
+    type FuncTypeRef: for<'a> LifetimeToRef<'a, FuncType>;
+
+    type TableRef: for<'a> LifetimeToRef<'a, Table>;
+
     type CallableRef: for<'a> LifetimeToRef<'a, Callable>;
 
     type MemoryRef: for<'a> LifetimeToRef<'a, Memory>;
@@ -67,6 +71,16 @@ pub trait ExpressionStore: ConstantExpressionStore {
         &'a mut self,
         idx: usize,
     ) -> Result<<Self::GlobalRefMut as LifetimeToRefMut<'a, Global>>::Output>;
+
+    fn func_type_idx<'a>(
+        &'a self,
+        idx: usize,
+    ) -> Result<<Self::FuncTypeRef as LifetimeToRef<'a, FuncType>>::Output>;
+
+    fn table_idx<'a>(
+        &'a self,
+        idx: usize,
+    ) -> Result<<Self::TableRef as LifetimeToRef<'a, Table>>::Output>;
 
     fn callable_idx<'a>(
         &'a self,

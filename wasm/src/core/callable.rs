@@ -19,6 +19,12 @@ impl Callable {
             Callable::WasmExpr(e) => e.call(stack, store),
         }
     }
+
+    pub fn func_type(&self) -> &FuncType {
+        match &self {
+            Callable::WasmExpr(e) => &e.func_type,
+        }
+    }
 }
 
 impl WasmExprCallable {

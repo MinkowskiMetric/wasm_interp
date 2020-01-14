@@ -1,6 +1,6 @@
-use std::convert::TryFrom;
+use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
-use crate::core::{stack_entry::StackEntry, BlockType, Stack};
+use crate::core::{stack_entry::StackEntry, BlockType, Callable, FuncType, Stack};
 use crate::parser::{Instruction, InstructionSource, Opcode};
 use anyhow::{anyhow, Result};
 
@@ -500,26 +500,32 @@ fn execute_inner_loop<'a>(
     }
 }
 
-struct BranchControl {
-    is_branch: bool,
-    label_idx: usize,
-    label_cnt: usize,
+enum BranchControl {
+    NoBranch,
+    Branch { label_idx: usize, label_cnt: usize },
+    Return,
 }
 
 impl BranchControl {
     pub fn no_branch() -> Self {
-        BranchControl {
-            is_branch: false,
-            label_idx: 0,
-            label_cnt: 0,
-        }
+        BranchControl::NoBranch
     }
 
     pub fn branch_target(label_idx: usize) -> Self {
-        BranchControl {
-            is_branch: true,
+        BranchControl::Branch {
             label_idx,
             label_cnt: label_idx,
+        }
+    }
+
+    pub fn do_return() -> Self {
+        BranchControl::Return
+    }
+
+    pub fn is_branch(&self) -> bool {
+        match self {
+            BranchControl::NoBranch => false,
+            _ => true,
         }
     }
 }
@@ -544,27 +550,43 @@ fn execute_block_expression(
 
         // Now execute the expression
         let branch_control = execute_expression_internal(expr, stack, store)?;
-
-        if !branch_control.is_branch || branch_control.label_idx == 0 {
-            // Either this isn't a branch, or this is a branch to here. We have to
-            // distinguish between no branch, and branch to zero because of the loop
-            // instruction where we behave differently.
-
-            // Walk all of the labels back off the stack. We add one to account for the lable we're
-            // going to
-            stack.pop_n_labels(branch_control.label_cnt + 1);
-
-            // If this is not a loop, then return no branch to indicate we're done, otherwise go around
-            // the loop again
-            if !branch_control.is_branch || !is_loop {
-                return Ok(BranchControl::no_branch());
+        match branch_control {
+            BranchControl::Return => {
+                // For returns, leave the stack alone to be cleaned up when we get back to the call frame
+                return Ok(BranchControl::do_return());
             }
-        } else {
-            return Ok(BranchControl {
-                is_branch: true,
-                label_idx: branch_control.label_idx - 1,
-                label_cnt: branch_control.label_cnt,
-            });
+
+            BranchControl::Branch {
+                label_idx,
+                label_cnt,
+            } if label_idx > 0 => {
+                // We're part way through the branch, so decrement the label index and propagate
+                // the branch up
+                return Ok(BranchControl::Branch {
+                    label_idx: label_idx - 1,
+                    label_cnt,
+                });
+            }
+
+            branch_control => {
+                // Either this isn't a branch, or this is a branch to here. We have to
+                // distinguish between no branch, and branch to zero because of the loop
+                // instruction where we behave differently.
+                let (is_branch, label_cnt) = match branch_control {
+                    BranchControl::Branch { label_cnt, .. } => (true, label_cnt),
+                    _ => (false, 0),
+                };
+
+                // Walk all of the labels back off the stack. We add one to account for the lable we're
+                // going to
+                stack.pop_n_labels(label_cnt + 1);
+
+                // If this is not a loop, then return no branch to indicate we're done, otherwise go around
+                // the loop again
+                if !is_branch || !is_loop {
+                    return Ok(BranchControl::no_branch());
+                }
+            }
         }
     }
 }
@@ -658,9 +680,54 @@ fn execute_call(
     stack: &mut Stack,
     store: &mut impl ExpressionStore,
 ) -> Result<BranchControl> {
+    // TODOTODOTODO This is nasty and points to a broader problem that having
+    // the store own the callables is a sharing and mutability problem.
     let callable = store.callable_idx(idx)?.clone();
     callable.call(stack, store)?;
     Ok(BranchControl::no_branch())
+}
+
+fn get_indirect_callable_from_table(
+    store: &impl ExpressionStore,
+    func_type_idx: usize,
+    table_idx: usize,
+    elem_idx: usize,
+) -> Result<(FuncType, Rc<RefCell<Callable>>)> {
+    // TODOTODOTODO This is nasty and points to a broader problem that having
+    // the store own the callables is a sharing and mutability problem.
+    let func_type = store.func_type_idx(func_type_idx)?.clone();
+    let table = store.table_idx(table_idx)?;
+
+    let callable = table.get_entry(elem_idx)?;
+
+    Ok((func_type, callable))
+}
+
+fn execute_call_indirect<'a>(
+    instruction: &'a Instruction<'a>,
+    stack: &mut Stack,
+    store: &mut impl ExpressionStore,
+) -> Result<BranchControl> {
+    let (func_type_idx, table_idx) = instruction.get_pair_u32_as_usize_arg();
+
+    let elem_idx = u32::try_from(get_stack_top(stack, 1)?[0])? as usize;
+    stack.pop();
+
+    let (func_type, callable) =
+        get_indirect_callable_from_table(store, func_type_idx, table_idx, elem_idx)?;
+    let callable = callable.borrow();
+
+    // Check the function types
+    if *callable.func_type() == func_type {
+        callable.call(stack, store)?;
+        Ok(BranchControl::no_branch())
+    } else {
+        Err(anyhow!("Indirect function call type does not match"))
+    }
+}
+
+fn execute_return(_stack: &mut Stack, _store: &mut impl ExpressionStore) -> Result<BranchControl> {
+    Ok(BranchControl::do_return())
 }
 
 fn execute_expression_internal(
@@ -699,14 +766,14 @@ fn execute_expression_internal(
             Some(Ok((InstructionResult::Call, instruction))) => {
                 execute_call(instruction.get_single_u32_as_usize_arg(), stack, store)?
             }
-            Some(Ok((InstructionResult::CallIndirect, _))) => {
-                unimplemented!("Call not implemented")
+            Some(Ok((InstructionResult::CallIndirect, instruction))) => {
+                execute_call_indirect(&instruction, stack, store)?
             }
-            Some(Ok((InstructionResult::Return, _))) => unimplemented!("Call not implemented"),
+            Some(Ok((InstructionResult::Return, _))) => execute_return(stack, store)?,
         };
 
         // If we're branching, then propagate the branch to the caller
-        if branch_control.is_branch {
+        if branch_control.is_branch() {
             return Ok(branch_control);
         }
     }
