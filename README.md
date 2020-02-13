@@ -10,7 +10,7 @@
   <h3 align="center">Wasm Interpreter</h3>
 
   <p align="center">
-    <a href="https://github.com/MinkowskiMetric">Stewart Tootill</a> decided he wanted to both scratch the Rust and the Webassembly itches in one go, over the Christmas break.
+    <a href="https://twitter.com/MinkowskiMetric">Stewart Tootill</a> decided he wanted to both scratch the Rust and the Webassembly itches in one go, over the Christmas break.
     <br />
     <a href="https://github.com/MinkowskiMetric/wasm_interp"><strong>Explore the docs »</strong></a>
     <br />
