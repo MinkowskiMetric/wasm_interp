@@ -3,15 +3,10 @@
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
 [![MIT License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
 
 <!-- PROJECT LOGO -->
 <br />
 <p align="center">
-  <a href="https://github.com/MinkowskiMetric/wasm_interp">
-    <img src="images/logo.png" alt="Logo" width="80" height="80">
-  </a>
-
   <h3 align="center">Wasm Interpreter</h3>
 
   <p align="center">
@@ -116,22 +111,20 @@ Project Link: [https://github.com/MinkowskiMetric/repo](https://github.com/Minko
 
 ## Acknowledgements
 
-- [Alexandru Ene](@_AlexEne_)
-- [Christopher Brown](@skeptomai)
+- [Alexandru Ene](https://twitter.com/_AlexEne_)
+- [Christopher Brown](https://twitter.com/skeptomai)
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 
-[contributors-shield]: https://img.shields.io/github/contributors/othneildrew/Best-README-Template.svg?style=flat-square
-[contributors-url]: https://github.com/othneildrew/Best-README-Template/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/othneildrew/Best-README-Template.svg?style=flat-square
-[forks-url]: https://github.com/othneildrew/Best-README-Template/network/members
-[stars-shield]: https://img.shields.io/github/stars/othneildrew/Best-README-Template.svg?style=flat-square
-[stars-url]: https://github.com/othneildrew/Best-README-Template/stargazers
-[issues-shield]: https://img.shields.io/github/issues/othneildrew/Best-README-Template.svg?style=flat-square
-[issues-url]: https://github.com/othneildrew/Best-README-Template/issues
-[license-shield]: https://img.shields.io/github/license/othneildrew/Best-README-Template.svg?style=flat-square
-[license-url]: https://github.com/othneildrew/Best-README-Template/blob/master/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=flat-square&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/othneildrew
+[contributors-shield]: https://img.shields.io/github/contributors/MinkowskiMetric/wasm_interp.svg?style=flat-square
+[contributors-url]: https://github.com/MinkowskiMetric/wasm_interp/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/MinkowskiMetric/wasm_interp.svg?style=flat-square
+[forks-url]: https://github.com/MinkowskiMetric/wasm_interp/network/members
+[stars-shield]: https://img.shields.io/github/stars/MinkowskiMetric/wasm_interp.svg?style=flat-square
+[stars-url]: https://github.com/MinkowskiMetric/wasm_interp/stargazers
+[issues-shield]: https://img.shields.io/github/issues/MinkowskiMetric/wasm_interp.svg?style=flat-square
+[issues-url]: https://github.com/MinkowskiMetric/wasm_interp/issues
+[license-shield]: https://img.shields.io/github/license/MinkowskiMetric/wasm_interp.svg?style=flat-square
+[license-url]: https://github.com/MinkowskiMetric/wasm_interp/blob/master/LICENSE.txt
 [product-screenshot]: images/screenshot.png
