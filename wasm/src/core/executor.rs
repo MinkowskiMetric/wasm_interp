@@ -6,7 +6,7 @@ pub mod store_access;
 pub use execute_core::{
     evaluate_constant_expression, execute_constant_expression, execute_expression,
 };
-pub use store_access::{ConstantExpressionStore, ExpressionStore};
+pub use store_access::{ConstantDataStore, DataStore, FunctionStore};
 
 #[cfg(test)]
 mod test {

@@ -7,7 +7,7 @@ use generic_array::typenum::consts::{U1, U2, U4, U8};
 use generic_array::{ArrayLength, GenericArray};
 
 use super::stack_ops::get_stack_top;
-use super::ExpressionStore;
+use super::store_access::DataStore;
 
 pub trait LEByteConvert {
     type ArrayLength: ArrayLength<u8>;
@@ -128,7 +128,7 @@ pub fn mem_load<
     ValueType: Sized + Into<StackEntry>,
     IntType: Sized + LEByteConvert,
     FuncType: Fn(IntType) -> ValueType,
-    Store: ExpressionStore,
+    Store: DataStore,
 >(
     instruction: &Instruction,
     stack: &mut Stack,
@@ -161,7 +161,7 @@ pub fn mem_store<
     ValueType: Sized + TryFrom<StackEntry, Error = anyhow::Error>,
     IntType: Sized + LEByteConvert,
     FuncType: Fn(ValueType) -> IntType,
-    Store: ExpressionStore,
+    Store: DataStore,
 >(
     instruction: &Instruction,
     stack: &mut Stack,

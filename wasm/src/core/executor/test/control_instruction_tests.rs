@@ -112,12 +112,12 @@ fn test_loop_block() {
 
     // Make a stack and a store
     let mut stack = Stack::new();
-    let mut store = TestStore::new();
+    let (function_store, mut data_store) = make_test_store();
 
     // We push a frame onto the stack with the one local we use
     assert!(stack.push_test_frame(1).is_ok());
 
-    assert!(execute_expression(&expr, &mut stack, &mut store).is_ok());
+    assert!(execute_expression(&expr, &mut stack, &function_store, &mut data_store).is_ok());
     assert_eq!(stack.working_count(), 1);
     assert_eq!(stack.working_top(1)[0], 0u64.into());
 }
@@ -163,12 +163,12 @@ fn test_branch_table() {
 
         // Make a stack and a store
         let mut stack = Stack::new();
-        let mut store = TestStore::new();
+        let (function_store, mut data_store) = make_test_store();
 
         // We push a frame onto the stack with the one local we use
         assert!(stack.push_test_frame(2).is_ok());
 
-        assert!(execute_expression(&expr, &mut stack, &mut store).is_ok());
+        assert!(execute_expression(&expr, &mut stack, &function_store, &mut data_store).is_ok());
         assert_eq!(stack.working_count(), 1);
         assert_eq!(
             stack.working_top(1)[0],
@@ -180,7 +180,7 @@ fn test_branch_table() {
 #[test]
 fn test_call() {
     let mut stack = Stack::new();
-    let mut store = TestStore::new();
+    let (mut function_store, mut data_store) = make_test_store();
 
     let mut func_writer = make_expression_writer();
     func_writer.write_single_leb_instruction(Opcode::LocalGet, 0);
@@ -189,7 +189,7 @@ fn test_call() {
     func_writer.write_single_leb_instruction(Opcode::LocalTee, 2);
 
     assert_eq!(
-        store.add_function(
+        function_store.add_function(
             func_writer,
             FuncType::new(vec![ValueType::I32, ValueType::I32], vec![ValueType::I32]),
             vec![Locals::new(1, ValueType::I32)]
@@ -202,7 +202,7 @@ fn test_call() {
     test_writer.write_const_instruction(17_i32);
     test_writer.write_single_leb_instruction(Opcode::Call, 0);
 
-    assert!(execute_expression(&test_writer, &mut stack, &mut store).is_ok());
+    assert!(execute_expression(&test_writer, &mut stack, &function_store, &mut data_store).is_ok());
     assert_eq!(stack.working_count(), 1);
     assert_eq!(stack.working_top(1)[0], 43_i32.into());
 }
@@ -210,7 +210,7 @@ fn test_call() {
 #[test]
 fn test_indirect_call() {
     let mut stack = Stack::new();
-    let mut store = TestStore::new();
+    let (mut function_store, mut data_store) = make_test_store();
 
     let func_type = FuncType::new(vec![ValueType::I32, ValueType::I32], vec![ValueType::I32]);
     let mut table = Table::new_from_bounds(128, None);
@@ -247,8 +247,8 @@ fn test_indirect_call() {
 
     table.set_entries(0, &functions);
 
-    store.set_func_types(vec![func_type]);
-    store.set_table(table);
+    function_store.set_func_types(vec![func_type]);
+    function_store.set_table(table);
 
     for do_add in [true, false].iter() {
         for index in 0..128_u32 {
@@ -259,7 +259,9 @@ fn test_indirect_call() {
             expr.write_const_instruction(index);
             expr.write_two_leb_instruction(Opcode::CallIndirect, 0, 0);
 
-            assert!(execute_expression(&expr, &mut stack, &mut store).is_ok());
+            assert!(
+                execute_expression(&expr, &mut stack, &function_store, &mut data_store).is_ok()
+            );
             assert_eq!(stack.working_count(), 1);
             assert_eq!(
                 stack.working_top(1)[0],

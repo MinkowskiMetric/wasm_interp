@@ -1,22 +1,29 @@
-use crate::core::{execute_expression, Expr, ExpressionStore, Func, FuncType, Locals, Stack};
+use crate::core::{
+    execute_expression, DataStore, Expr, Func, FuncType, FunctionStore, Locals, Stack,
+};
 use anyhow::Result;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WasmExprCallable {
     func_type: FuncType,
     locals: Vec<Locals>,
     expr: Expr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Callable {
     WasmExpr(WasmExprCallable),
 }
 
 impl Callable {
-    pub fn call<Store: ExpressionStore>(&self, stack: &mut Stack, store: &mut Store) -> Result<()> {
+    pub fn call(
+        &self,
+        stack: &mut Stack,
+        function_store: &impl FunctionStore,
+        data_store: &mut impl DataStore,
+    ) -> Result<()> {
         match &self {
-            Callable::WasmExpr(e) => e.call(stack, store),
+            Callable::WasmExpr(e) => e.call(stack, function_store, data_store),
         }
     }
 
@@ -40,12 +47,17 @@ impl WasmExprCallable {
         })
     }
 
-    fn call<Store: ExpressionStore>(&self, stack: &mut Stack, store: &mut Store) -> Result<()> {
+    fn call(
+        &self,
+        stack: &mut Stack,
+        function_store: &impl FunctionStore,
+        data_store: &mut impl DataStore,
+    ) -> Result<()> {
         // Create the call frame for the function on the stack
         stack.push_typed_frame(&self.func_type, &self.locals)?;
 
         // Now execute the function on the stack
-        let result = execute_expression(&self.expr, stack, store);
+        let result = execute_expression(&self.expr, stack, function_store, data_store);
 
         // Pop the function frame off the stack
         stack.pop_typed_frame()?;

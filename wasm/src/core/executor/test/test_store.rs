@@ -1,33 +1,86 @@
 use anyhow::{anyhow, Result};
 
-use super::super::{
-    store_access::{RefMutType, RefType},
-    ConstantExpressionStore, ExpressionStore,
+use super::super::{ConstantDataStore, DataStore, FunctionStore};
+use crate::core::{
+    stack_entry::StackEntry, Callable, FuncType, Locals, Memory, Stack, Table, WasmExprCallable,
 };
-use crate::core::{Callable, FuncType, Global, Locals, Memory, Table, WasmExprCallable};
 use crate::parser::InstructionSource;
 
-pub struct TestStore {
+pub struct TestDataStore {
     memory: Memory,
     memory_enabled: bool,
-    functions: Vec<Callable>,
-    func_types: Vec<FuncType>,
-    table: Option<Table>,
 }
 
-impl TestStore {
+impl TestDataStore {
     pub fn new() -> Self {
         Self {
             memory: Memory::new_from_bounds(1, Some(3)),
             memory_enabled: false,
-            functions: Vec::new(),
-            func_types: Vec::new(),
-            table: None,
         }
     }
 
     pub fn enable_memory(&mut self) {
         self.memory_enabled = true;
+    }
+}
+
+impl ConstantDataStore for TestDataStore {
+    fn get_global_value(&self, _idx: usize) -> Result<StackEntry> {
+        Err(anyhow!("Global value not present in test store"))
+    }
+}
+
+impl DataStore for TestDataStore {
+    fn set_global_value(&mut self, _idx: usize, _value: StackEntry) -> Result<()> {
+        Err(anyhow!("Global value not present in test store"))
+    }
+
+    fn read_data(&self, mem_idx: usize, offset: usize, data: &mut [u8]) -> Result<()> {
+        if self.memory_enabled && mem_idx == 0 {
+            self.memory.get_data(offset, data)
+        } else {
+            Err(anyhow!("Memory index out of range"))
+        }
+    }
+
+    fn write_data(&mut self, mem_idx: usize, offset: usize, data: &[u8]) -> Result<()> {
+        if self.memory_enabled && mem_idx == 0 {
+            self.memory.set_data(offset, data)
+        } else {
+            Err(anyhow!("Memory index out of range"))
+        }
+    }
+
+    fn get_memory_size(&self, mem_idx: usize) -> Result<usize> {
+        if self.memory_enabled && mem_idx == 0 {
+            Ok(self.memory.current_size())
+        } else {
+            Err(anyhow!("Memory index out of range"))
+        }
+    }
+
+    fn grow_memory_by(&mut self, mem_idx: usize, grow_by: usize) -> Result<()> {
+        if self.memory_enabled && mem_idx == 0 {
+            self.memory.grow_by(grow_by)
+        } else {
+            Err(anyhow!("Memory index out of range"))
+        }
+    }
+}
+
+pub struct TestFunctionStore {
+    functions: Vec<Callable>,
+    func_types: Vec<FuncType>,
+    table: Option<Table>,
+}
+
+impl TestFunctionStore {
+    pub fn new() -> Self {
+        Self {
+            functions: Vec::new(),
+            func_types: Vec::new(),
+            table: None,
+        }
     }
 
     pub fn add_function(
@@ -53,67 +106,46 @@ impl TestStore {
     }
 }
 
-impl ConstantExpressionStore for TestStore {
-    type GlobalRef = RefType<Global>;
+impl FunctionStore for TestFunctionStore {
+    fn execute_function(
+        &self,
+        idx: usize,
+        stack: &mut Stack,
+        data_store: &mut impl DataStore,
+    ) -> Result<()> {
+        if idx < self.functions.len() {
+            let callable = &self.functions[idx];
+            callable.call(stack, self, data_store)
+        } else {
+            Err(anyhow!("Callable index out of range"))
+        }
+    }
 
-    fn global_idx<'a>(&'a self, _idx: usize) -> Result<&'a Global> {
-        Err(anyhow!("Global value not present in test store"))
+    fn execute_indirect_function(
+        &self,
+        func_type_idx: usize,
+        table_idx: usize,
+        elem_idx: usize,
+        stack: &mut Stack,
+        data_store: &mut impl DataStore,
+    ) -> Result<()> {
+        if func_type_idx >= self.func_types.len() {
+            Err(anyhow!("FuncType index out of range"))
+        } else if table_idx != 0 || self.table.is_none() {
+            Err(anyhow!("Table index out of range"))
+        } else {
+            let callable = self.table.as_ref().unwrap().get_entry(elem_idx)?;
+            let callable = callable.borrow();
+
+            if *callable.func_type() != self.func_types[func_type_idx] {
+                Err(anyhow!("Indirect function call type does not match"))
+            } else {
+                callable.call(stack, self, data_store)
+            }
+        }
     }
 }
 
-impl ExpressionStore for TestStore {
-    type GlobalRefMut = RefMutType<Global>;
-    type FuncTypeRef = RefType<FuncType>;
-    type TableRef = RefType<Table>;
-    type CallableRef = RefType<Callable>;
-    type MemoryRef = RefType<Memory>;
-    type MemoryRefMut = RefMutType<Memory>;
-
-    fn global_idx_mut<'a>(&'a mut self, _idx: usize) -> Result<&'a mut Global> {
-        Err(anyhow!("Global value not present in test store"))
-    }
-
-    fn func_type_idx<'a>(&'a self, idx: usize) -> Result<&'a FuncType> {
-        if idx < self.func_types.len() {
-            Ok(&self.func_types[idx])
-        } else {
-            Err(anyhow!("Function type index out of range"))
-        }
-    }
-
-    fn table_idx<'a>(&'a self, idx: usize) -> Result<&'a Table> {
-        if idx == 0 {
-            if let Some(table) = &self.table {
-                Ok(table)
-            } else {
-                Err(anyhow!("Table index out of range"))
-            }
-        } else {
-            Err(anyhow!("Table index out of range"))
-        }
-    }
-
-    fn callable_idx<'a>(&'a self, idx: usize) -> Result<&'a Callable> {
-        if idx < self.functions.len() {
-            Ok(&self.functions[idx])
-        } else {
-            Err(anyhow!("Function index out of range"))
-        }
-    }
-
-    fn mem_idx<'a>(&'a self, idx: usize) -> Result<&'a Memory> {
-        if self.memory_enabled && idx == 0 {
-            Ok(&self.memory)
-        } else {
-            Err(anyhow!("Memory not present in store"))
-        }
-    }
-
-    fn mem_idx_mut<'a>(&'a mut self, idx: usize) -> Result<&'a mut Memory> {
-        if self.memory_enabled && idx == 0 {
-            Ok(&mut self.memory)
-        } else {
-            Err(anyhow!("Memory not present in store"))
-        }
-    }
+pub fn make_test_store() -> (TestFunctionStore, TestDataStore) {
+    (TestFunctionStore::new(), TestDataStore::new())
 }
