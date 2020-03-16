@@ -121,8 +121,6 @@ impl ModuleBuilder {
         } else if self.typeidx.len() != self.funcs.len() {
             Err(anyhow!("TypeIdx and code tables do not match sizes"))
         } else {
-            // TODOTODOTODO - this will get more complicated - there is more processing to be done here
-            // to tie up the functions table
             Ok(core::RawModule::new(
                 self.types,
                 self.typeidx,

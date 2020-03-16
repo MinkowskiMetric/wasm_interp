@@ -11,7 +11,7 @@ fn main() -> Result<()> {
     if args.len() < 2 {
         println!("wasm [mod_name]");
     } else {
-        core::Module::load_module_from_path(&args[1], core::EmptyResolver::instance())
+        core::load_module_from_path(&args[1], core::EmptyResolver::instance())
             .with_context(|| format!("Failed to read module from {}", &args[1]))?;
     }
 

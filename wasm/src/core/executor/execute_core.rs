@@ -1,21 +1,18 @@
-use std::{cell::RefCell, convert::TryFrom, rc::Rc};
+use std::convert::TryFrom;
 
-use crate::core::{stack_entry::StackEntry, BlockType, Callable, FuncType, Stack};
+use crate::core::{stack_entry::StackEntry, BlockType, Stack};
 use crate::parser::{Instruction, InstructionSource, Opcode};
 use anyhow::{anyhow, Result};
 
 use super::memory_access::{mem_load, mem_store};
 use super::stack_ops::{binary_boolean_op, binary_op, get_stack_top, unary_boolean_op, unary_op};
 
-pub use super::store_access::{
-    CellRefMutType, CellRefType, ConstantExpressionStore, ExpressionStore, LifetimeToRef,
-    RefMutType, RefType,
-};
+pub use super::store_access::{ConstantDataStore, DataStore, FunctionStore};
 
 fn execute_single_constant_instruction(
     instruction: Instruction,
     stack: &mut Stack,
-    store: &impl ConstantExpressionStore,
+    store: &impl ConstantDataStore,
 ) -> Result<()> {
     match instruction.opcode() {
         // There is only a very limited set of instructions that are allowed in a constant expression
@@ -69,7 +66,7 @@ enum SingleInstructionResult {
 fn execute_single_instruction(
     instruction: &Instruction,
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    data_store: &mut impl DataStore,
 ) -> Result<SingleInstructionResult> {
     match instruction.opcode() {
         Opcode::Unreachable => return Err(anyhow!("Unreachable opcode")),
@@ -147,103 +144,103 @@ fn execute_single_instruction(
         }
 
         Opcode::I32Load => {
-            mem_load(instruction, stack, store, |v: u32| v)?;
+            mem_load(instruction, stack, data_store, |v: u32| v)?;
         }
         Opcode::I64Load => {
-            mem_load(instruction, stack, store, |v: u64| v)?;
+            mem_load(instruction, stack, data_store, |v: u64| v)?;
         }
         Opcode::F32Load => {
-            mem_load(instruction, stack, store, |v: f32| v)?;
+            mem_load(instruction, stack, data_store, |v: f32| v)?;
         }
         Opcode::F64Load => {
-            mem_load(instruction, stack, store, |v: f64| v)?;
+            mem_load(instruction, stack, data_store, |v: f64| v)?;
         }
 
         Opcode::I32Load8S => {
-            mem_load(instruction, stack, store, |v: i8| i32::from(v))?;
+            mem_load(instruction, stack, data_store, |v: i8| i32::from(v))?;
         }
         Opcode::I32Load8U => {
-            mem_load(instruction, stack, store, |v: u8| u32::from(v))?;
+            mem_load(instruction, stack, data_store, |v: u8| u32::from(v))?;
         }
         Opcode::I32Load16S => {
-            mem_load(instruction, stack, store, |v: i16| i32::from(v))?;
+            mem_load(instruction, stack, data_store, |v: i16| i32::from(v))?;
         }
         Opcode::I32Load16U => {
-            mem_load(instruction, stack, store, |v: u16| u32::from(v))?;
+            mem_load(instruction, stack, data_store, |v: u16| u32::from(v))?;
         }
         Opcode::I64Load8S => {
-            mem_load(instruction, stack, store, |v: i8| i64::from(v))?;
+            mem_load(instruction, stack, data_store, |v: i8| i64::from(v))?;
         }
         Opcode::I64Load8U => {
-            mem_load(instruction, stack, store, |v: u8| u64::from(v))?;
+            mem_load(instruction, stack, data_store, |v: u8| u64::from(v))?;
         }
         Opcode::I64Load16S => {
-            mem_load(instruction, stack, store, |v: i16| i64::from(v))?;
+            mem_load(instruction, stack, data_store, |v: i16| i64::from(v))?;
         }
         Opcode::I64Load16U => {
-            mem_load(instruction, stack, store, |v: u16| u64::from(v))?;
+            mem_load(instruction, stack, data_store, |v: u16| u64::from(v))?;
         }
         Opcode::I64Load32S => {
-            mem_load(instruction, stack, store, |v: i32| i64::from(v))?;
+            mem_load(instruction, stack, data_store, |v: i32| i64::from(v))?;
         }
         Opcode::I64Load32U => {
-            mem_load(instruction, stack, store, |v: u32| u64::from(v))?;
+            mem_load(instruction, stack, data_store, |v: u32| u64::from(v))?;
         }
 
         Opcode::I32Store => {
-            mem_store(instruction, stack, store, |v: u32| v)?;
+            mem_store(instruction, stack, data_store, |v: u32| v)?;
         }
         Opcode::I64Store => {
-            mem_store(instruction, stack, store, |v: u64| v)?;
+            mem_store(instruction, stack, data_store, |v: u64| v)?;
         }
         Opcode::F32Store => {
-            mem_store(instruction, stack, store, |v: f32| v)?;
+            mem_store(instruction, stack, data_store, |v: f32| v)?;
         }
         Opcode::F64Store => {
-            mem_store(instruction, stack, store, |v: f64| v)?;
+            mem_store(instruction, stack, data_store, |v: f64| v)?;
         }
 
         Opcode::I32Store8 => {
-            mem_store(instruction, stack, store, |v: u32| {
+            mem_store(instruction, stack, data_store, |v: u32| {
                 u8::try_from(v & 0xff).unwrap()
             })?;
         }
         Opcode::I32Store16 => {
-            mem_store(instruction, stack, store, |v: u32| {
+            mem_store(instruction, stack, data_store, |v: u32| {
                 u16::try_from(v & 0xffff).unwrap()
             })?;
         }
         Opcode::I64Store8 => {
-            mem_store(instruction, stack, store, |v: u64| {
+            mem_store(instruction, stack, data_store, |v: u64| {
                 u8::try_from(v & 0xff).unwrap()
             })?;
         }
         Opcode::I64Store16 => {
-            mem_store(instruction, stack, store, |v: u64| {
+            mem_store(instruction, stack, data_store, |v: u64| {
                 u16::try_from(v & 0xffff).unwrap()
             })?;
         }
         Opcode::I64Store32 => {
-            mem_store(instruction, stack, store, |v: u64| {
+            mem_store(instruction, stack, data_store, |v: u64| {
                 u32::try_from(v & 0xffffffff).unwrap()
             })?;
         }
 
         Opcode::MemorySize => {
             let memory_idx = instruction.get_single_u32_as_usize_arg();
-            let size = store.get_memory_size(memory_idx)? as u32;
+            let size = data_store.get_memory_size(memory_idx)? as u32;
             stack.push(size.into());
         }
         Opcode::MemoryGrow => {
             let memory_idx = instruction.get_single_u32_as_usize_arg();
-            let original_size = store.get_memory_size(memory_idx)? as u32;
+            let original_size = data_store.get_memory_size(memory_idx)? as u32;
 
             let grow_by = get_stack_top(stack, 1)?[0];
             let grow_by = u32::try_from(grow_by)?;
             let grow_by = usize::try_from(grow_by).unwrap();
             stack.pop();
 
-            if store.grow_memory_by(memory_idx, grow_by).is_ok() {
+            if data_store.grow_memory_by(memory_idx, grow_by).is_ok() {
                 stack.push(original_size.into());
             } else {
                 stack.push(StackEntry::from(-1i32));
@@ -274,13 +271,13 @@ fn execute_single_instruction(
             }
         }
         Opcode::GlobalGet => {
-            stack.push(store.get_global_value(instruction.get_single_u32_as_usize_arg())?)
+            stack.push(data_store.get_global_value(instruction.get_single_u32_as_usize_arg())?)
         }
         Opcode::GlobalSet => {
             let arg = get_stack_top(stack, 1)?[0];
             stack.pop();
 
-            store.set_global_value(instruction.get_single_u32_as_usize_arg(), arg)?;
+            data_store.set_global_value(instruction.get_single_u32_as_usize_arg(), arg)?;
         }
 
         // There is only a very limited set of instructions that are allowed in a constant expression
@@ -448,7 +445,7 @@ fn execute_single_instruction(
 pub fn execute_constant_expression(
     expr: &impl InstructionSource,
     stack: &mut Stack,
-    store: &impl ConstantExpressionStore,
+    store: &impl ConstantDataStore,
 ) -> Result<()> {
     for instruction in expr.iter() {
         execute_single_constant_instruction(instruction?, stack, store)?;
@@ -458,7 +455,7 @@ pub fn execute_constant_expression(
 
 pub fn evaluate_constant_expression(
     expr: &impl InstructionSource,
-    store: &impl ConstantExpressionStore,
+    store: &impl ConstantDataStore,
     arity: usize,
 ) -> Result<Vec<StackEntry>> {
     let mut stack = Stack::new();
@@ -475,7 +472,7 @@ pub fn evaluate_constant_expression(
 fn execute_inner_loop<'a>(
     iter: &'_ mut impl Iterator<Item = Result<Instruction<'a>>>,
     stack: &'_ mut Stack,
-    store: &'_ mut impl ExpressionStore,
+    data_store: &'_ mut impl DataStore,
 ) -> Option<Result<(InstructionResult, Instruction<'a>)>> {
     loop {
         match iter.next() {
@@ -486,7 +483,7 @@ fn execute_inner_loop<'a>(
                 return Some(Err(e));
             }
             Some(Ok(instruction)) => {
-                match execute_single_instruction(&instruction, stack, store) {
+                match execute_single_instruction(&instruction, stack, data_store) {
                     Ok(SingleInstructionResult::Done) => {} // Normal instruction executed normally
                     Ok(SingleInstructionResult::ControlInstruction(ir)) => {
                         return Some(Ok((ir, instruction)));
@@ -535,7 +532,8 @@ fn execute_block_expression(
     is_loop: bool,
     expr: &(impl InstructionSource + ?Sized),
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
 ) -> Result<BranchControl> {
     loop {
         // Push a label on to the stack. This is mainly used as a stack guard, since we will probably
@@ -549,7 +547,7 @@ fn execute_block_expression(
         stack.push_label(block_arity);
 
         // Now execute the expression
-        let branch_control = execute_expression_internal(expr, stack, store)?;
+        let branch_control = execute_expression_internal(expr, stack, function_store, data_store)?;
         match branch_control {
             BranchControl::Return => {
                 // For returns, leave the stack alone to be cleaned up when we get back to the call frame
@@ -594,7 +592,8 @@ fn execute_block_expression(
 fn execute_if<'a>(
     instruction: &'a Instruction<'a>,
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
 ) -> Result<BranchControl> {
     let condition = u32::try_from(get_stack_top(stack, 1)?[0])?;
     stack.pop();
@@ -605,7 +604,8 @@ fn execute_if<'a>(
             false,
             instruction.get_block(),
             stack,
-            store,
+            function_store,
+            data_store,
         )
     } else if instruction.has_else_block() {
         execute_block_expression(
@@ -613,7 +613,8 @@ fn execute_if<'a>(
             false,
             instruction.get_else_block(),
             stack,
-            store,
+            function_store,
+            data_store,
         )
     } else if instruction.get_block_type() != BlockType::None {
         Err(anyhow!("If instruction with block type other than none should have an else block (shouldn't it?)"))
@@ -625,21 +626,24 @@ fn execute_if<'a>(
 fn execute_block<'a>(
     instruction: &'a Instruction<'a>,
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
 ) -> Result<BranchControl> {
     execute_block_expression(
         instruction.get_block_type(),
         instruction.opcode() == Opcode::Loop,
         instruction.get_block(),
         stack,
-        store,
+        function_store,
+        data_store,
     )
 }
 
 fn execute_br(
     label: usize,
     _stack: &mut Stack,
-    _store: &mut impl ExpressionStore,
+    _function_store: &impl FunctionStore,
+    _data_store: &mut impl DataStore,
 ) -> Result<BranchControl> {
     // Taking the branch is pretty easy
     Ok(BranchControl::branch_target(label))
@@ -648,13 +652,14 @@ fn execute_br(
 fn execute_br_if(
     label: usize,
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
 ) -> Result<BranchControl> {
     let condition = u32::try_from(get_stack_top(stack, 1)?[0])?;
     stack.pop();
 
     if condition != 0 {
-        Ok(execute_br(label, stack, store)?)
+        Ok(execute_br(label, stack, function_store, data_store)?)
     } else {
         Ok(BranchControl::no_branch())
     }
@@ -663,7 +668,8 @@ fn execute_br_if(
 fn execute_br_table(
     labels: &[usize],
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
 ) -> Result<BranchControl> {
     assert!(labels.len() > 0);
 
@@ -672,72 +678,57 @@ fn execute_br_table(
     stack.pop();
 
     let index = std::cmp::min(index, labels.len() - 1);
-    execute_br(labels[index], stack, store)
+    execute_br(labels[index], stack, function_store, data_store)
 }
 
 fn execute_call(
     idx: usize,
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
 ) -> Result<BranchControl> {
-    // TODOTODOTODO This is nasty and points to a broader problem that having
-    // the store own the callables is a sharing and mutability problem.
-    let callable = store.callable_idx(idx)?.clone();
-    callable.call(stack, store)?;
+    function_store.execute_function(idx, stack, data_store)?;
     Ok(BranchControl::no_branch())
-}
-
-fn get_indirect_callable_from_table(
-    store: &impl ExpressionStore,
-    func_type_idx: usize,
-    table_idx: usize,
-    elem_idx: usize,
-) -> Result<(FuncType, Rc<RefCell<Callable>>)> {
-    // TODOTODOTODO This is nasty and points to a broader problem that having
-    // the store own the callables is a sharing and mutability problem.
-    let func_type = store.func_type_idx(func_type_idx)?.clone();
-    let table = store.table_idx(table_idx)?;
-
-    let callable = table.get_entry(elem_idx)?;
-
-    Ok((func_type, callable))
 }
 
 fn execute_call_indirect<'a>(
     instruction: &'a Instruction<'a>,
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
 ) -> Result<BranchControl> {
     let (func_type_idx, table_idx) = instruction.get_pair_u32_as_usize_arg();
 
     let elem_idx = u32::try_from(get_stack_top(stack, 1)?[0])? as usize;
     stack.pop();
 
-    let (func_type, callable) =
-        get_indirect_callable_from_table(store, func_type_idx, table_idx, elem_idx)?;
-    let callable = callable.borrow();
-
-    // Check the function types
-    if *callable.func_type() == func_type {
-        callable.call(stack, store)?;
-        Ok(BranchControl::no_branch())
-    } else {
-        Err(anyhow!("Indirect function call type does not match"))
-    }
+    function_store.execute_indirect_function(
+        func_type_idx,
+        table_idx,
+        elem_idx,
+        stack,
+        data_store,
+    )?;
+    Ok(BranchControl::no_branch())
 }
 
-fn execute_return(_stack: &mut Stack, _store: &mut impl ExpressionStore) -> Result<BranchControl> {
+fn execute_return(
+    _stack: &mut Stack,
+    _function_store: &impl FunctionStore,
+    _data_store: &mut impl DataStore,
+) -> Result<BranchControl> {
     Ok(BranchControl::do_return())
 }
 
 fn execute_expression_internal(
     expr: &(impl InstructionSource + ?Sized),
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
 ) -> Result<BranchControl> {
     let mut iter = expr.iter();
     loop {
-        let branch_control = match execute_inner_loop(&mut iter, stack, store) {
+        let branch_control = match execute_inner_loop(&mut iter, stack, data_store) {
             None => {
                 return Ok(BranchControl::no_branch());
             }
@@ -746,30 +737,44 @@ fn execute_expression_internal(
             }
 
             Some(Ok((InstructionResult::If, instruction))) => {
-                execute_if(&instruction, stack, store)?
+                execute_if(&instruction, stack, function_store, data_store)?
             }
             Some(Ok((InstructionResult::Block, instruction)))
             | Some(Ok((InstructionResult::Loop, instruction))) => {
-                execute_block(&instruction, stack, store)?
+                execute_block(&instruction, stack, function_store, data_store)?
             }
 
-            Some(Ok((InstructionResult::Br, instruction))) => {
-                execute_br(instruction.get_single_u32_as_usize_arg(), stack, store)?
-            }
-            Some(Ok((InstructionResult::BrIf, instruction))) => {
-                execute_br_if(instruction.get_single_u32_as_usize_arg(), stack, store)?
-            }
-            Some(Ok((InstructionResult::BrTable, instruction))) => {
-                execute_br_table(&instruction.get_block_table_targets(), stack, store)?
-            }
+            Some(Ok((InstructionResult::Br, instruction))) => execute_br(
+                instruction.get_single_u32_as_usize_arg(),
+                stack,
+                function_store,
+                data_store,
+            )?,
+            Some(Ok((InstructionResult::BrIf, instruction))) => execute_br_if(
+                instruction.get_single_u32_as_usize_arg(),
+                stack,
+                function_store,
+                data_store,
+            )?,
+            Some(Ok((InstructionResult::BrTable, instruction))) => execute_br_table(
+                &instruction.get_block_table_targets(),
+                stack,
+                function_store,
+                data_store,
+            )?,
 
-            Some(Ok((InstructionResult::Call, instruction))) => {
-                execute_call(instruction.get_single_u32_as_usize_arg(), stack, store)?
-            }
+            Some(Ok((InstructionResult::Call, instruction))) => execute_call(
+                instruction.get_single_u32_as_usize_arg(),
+                stack,
+                function_store,
+                data_store,
+            )?,
             Some(Ok((InstructionResult::CallIndirect, instruction))) => {
-                execute_call_indirect(&instruction, stack, store)?
+                execute_call_indirect(&instruction, stack, function_store, data_store)?
             }
-            Some(Ok((InstructionResult::Return, _))) => execute_return(stack, store)?,
+            Some(Ok((InstructionResult::Return, _))) => {
+                execute_return(stack, function_store, data_store)?
+            }
         };
 
         // If we're branching, then propagate the branch to the caller
@@ -782,8 +787,9 @@ fn execute_expression_internal(
 pub fn execute_expression(
     expr: &(impl InstructionSource + ?Sized),
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
 ) -> Result<()> {
-    execute_expression_internal(expr, stack, store)?;
+    execute_expression_internal(expr, stack, function_store, data_store)?;
     Ok(())
 }

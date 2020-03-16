@@ -67,20 +67,20 @@ impl core::Resolver for TestResolver {
 fn test_load_module() -> std::result::Result<(), String> {
     let resolver = TestResolver::new();
 
-    match core::Module::load_module_from_path("../test_app/test.wasm", &resolver) {
-        Ok(m) => {
-            assert_eq!(m.exports.len(), 4);
-            assert!(m.exports.contains_key("fib"));
-            assert!(m.exports.contains_key("fib7"));
-            assert!(m.exports.contains_key("zero"));
-            assert!(m.exports.contains_key("one"));
+    match core::load_module_from_path("../test_app/test.wasm", &resolver) {
+        Ok((function_module, data_module, exports)) => {
+            assert_eq!(exports.len(), 4);
+            assert!(exports.contains_key("fib"));
+            assert!(exports.contains_key("fib7"));
+            assert!(exports.contains_key("zero"));
+            assert!(exports.contains_key("one"));
 
-            let exported_fn = match &m.exports["fib"] {
+            let exported_fn = match &exports["fib"] {
                 core::ExportValue::Function(f) => f,
                 _ => panic!("Unexpected export type"),
             };
 
-            let exported_value_fib7 = match &m.exports["fib7"] {
+            let exported_value_fib7 = match &exports["fib7"] {
                 core::ExportValue::Global(g) => g,
                 _ => panic!("Unexpected global export type"),
             };
@@ -94,7 +94,7 @@ fn test_load_module() -> std::result::Result<(), String> {
                 13_u32.into()
             );
 
-            let exported_value_zero = match &m.exports["zero"] {
+            let exported_value_zero = match &exports["zero"] {
                 core::ExportValue::Global(g) => g,
                 _ => panic!("Unexpected global export type"),
             };
@@ -108,7 +108,7 @@ fn test_load_module() -> std::result::Result<(), String> {
                 0u32.into()
             );
 
-            let exported_value_one = match &m.exports["one"] {
+            let exported_value_one = match &exports["one"] {
                 core::ExportValue::Global(g) => g,
                 _ => panic!("Unexpected global export type"),
             };
@@ -119,8 +119,8 @@ fn test_load_module() -> std::result::Result<(), String> {
             );
             assert_eq!(exported_value_one.borrow().get_value().clone(), 1u32.into());
 
-            assert_eq!(m.memories.len(), 1);
-            let memory = m.memories[0].borrow();
+            assert_eq!(data_module.memories.len(), 1);
+            let memory = data_module.memories[0].borrow();
 
             assert_eq!(memory.min_size(), 2);
             assert_eq!(memory.max_size(), None);
@@ -142,8 +142,8 @@ fn test_load_module() -> std::result::Result<(), String> {
             assert!(memory.get_data(65534, &mut buf).is_ok());
             assert_eq!(buf, ['s' as u8, 'p' as u8, 'a' as u8, 'n' as u8]);
 
-            assert_eq!(m.tables.len(), 1);
-            let table = m.tables[0].borrow();
+            assert_eq!(function_module.tables.len(), 1);
+            let table = function_module.tables[0].borrow();
 
             assert_eq!(table.min_size(), 2);
             assert_eq!(table.max_size(), None);

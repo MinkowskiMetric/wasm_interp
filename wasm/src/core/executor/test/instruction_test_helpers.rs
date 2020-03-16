@@ -1,6 +1,7 @@
 use std::convert::TryInto;
 
-use crate::core::{stack_entry::StackEntry, ExpressionStore, Stack};
+use super::super::store_access::{DataStore, FunctionStore};
+use crate::core::{stack_entry::StackEntry, Stack};
 use crate::parser::{InstructionSource, Opcode};
 
 use super::instruction_generator::make_expression_writer;
@@ -15,9 +16,9 @@ pub fn test_constant_opcode_impl(p1: impl Into<StackEntry>) -> Option<StackEntry
 
     // Now we need a stack and a store to run the op against
     let mut stack = Stack::new();
-    let mut test_store = TestStore::new();
+    let (function_store, mut data_store) = make_test_store();
 
-    if let Err(_) = execute_expression(&expr, &mut stack, &mut test_store) {
+    if let Err(_) = execute_expression(&expr, &mut stack, &function_store, &mut data_store) {
         None
     } else {
         if stack.working_count() == 1 {
@@ -38,13 +39,13 @@ macro_rules! test_constant_opcode {
 pub fn test_no_return_expression_impl(expr: impl InstructionSource) -> Option<()> {
     // Now we need a stack and a store to run the op against
     let mut stack = Stack::new();
-    let mut test_store = TestStore::new();
+    let (function_store, mut data_store) = make_test_store();
 
     // We push a frame onto the stack. This helps the expressions in the case they might need
     // to use a block
     assert!(stack.push_test_frame(0).is_ok());
 
-    if let Err(_) = execute_expression(&expr, &mut stack, &mut test_store) {
+    if let Err(_) = execute_expression(&expr, &mut stack, &function_store, &mut data_store) {
         None
     } else {
         if stack.working_count() == 0 {
@@ -65,13 +66,13 @@ macro_rules! test_no_return_expression {
 pub fn test_single_return_expression_impl(expr: impl InstructionSource) -> Option<StackEntry> {
     // Now we need a stack and a store to run the op against
     let mut stack = Stack::new();
-    let mut test_store = TestStore::new();
+    let (function_store, mut data_store) = make_test_store();
 
     // We push a frame onto the stack. This helps the expressions in the case they might need
     // to use a block
     assert!(stack.push_test_frame(0).is_ok());
 
-    if let Err(_) = execute_expression(&expr, &mut stack, &mut test_store) {
+    if let Err(_) = execute_expression(&expr, &mut stack, &function_store, &mut data_store) {
         None
     } else {
         if stack.working_count() == 1 {
@@ -144,10 +145,11 @@ pub fn test_memory_load_impl(
     mem_idx: usize,
     offset: u32,
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
 ) -> Option<StackEntry> {
     let expr = memory_load_expression(opcode, address, mem_idx, offset);
-    if let Err(_) = execute_expression(&expr, stack, store) {
+    if let Err(_) = execute_expression(&expr, stack, function_store, data_store) {
         None
     } else {
         if stack.working_count() == 1 {
@@ -162,9 +164,17 @@ pub fn test_memory_load_impl(
 
 #[macro_export]
 macro_rules! test_memory_load {
-    ($opcode:expr, $address:expr, $mem_idx:expr, $offset:expr, $stack:expr, $store:expr, $r:expr) => {
+    ($opcode:expr, $address:expr, $mem_idx:expr, $offset:expr, $stack:expr, $function_store:expr, $data_store: expr, $r:expr) => {
         assert_eq!(
-            test_memory_load_impl($opcode, $address, $mem_idx, $offset, $stack, $store),
+            test_memory_load_impl(
+                $opcode,
+                $address,
+                $mem_idx,
+                $offset,
+                $stack,
+                $function_store,
+                $data_store
+            ),
             Some($r.into())
         );
     };
@@ -191,10 +201,11 @@ pub fn test_memory_store_impl(
     offset: u32,
     value: impl Into<StackEntry>,
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
 ) -> Option<()> {
     let expr = memory_store_expression(opcode, address, mem_idx, offset, value);
-    if let Err(_) = execute_expression(&expr, stack, store) {
+    if let Err(_) = execute_expression(&expr, stack, function_store, data_store) {
         None
     } else {
         if stack.working_count() == 0 {
@@ -207,9 +218,18 @@ pub fn test_memory_store_impl(
 
 #[macro_export]
 macro_rules! test_memory_store {
-    ($opcode:expr, $address:expr, $mem_idx:expr, $offset:expr, $value:expr, $stack:expr, $store:expr) => {
+    ($opcode:expr, $address:expr, $mem_idx:expr, $offset:expr, $value:expr, $stack:expr, $function_store:expr, $data_store:expr) => {
         assert_eq!(
-            test_memory_store_impl($opcode, $address, $mem_idx, $offset, $value, $stack, $store),
+            test_memory_store_impl(
+                $opcode,
+                $address,
+                $mem_idx,
+                $offset,
+                $value,
+                $stack,
+                $function_store,
+                $data_store
+            ),
             Some(())
         );
     };

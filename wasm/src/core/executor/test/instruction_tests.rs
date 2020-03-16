@@ -1,10 +1,7 @@
-use crate::core::{
-    executor::{execute_expression, ExpressionStore},
-    stack_entry::StackEntry,
-    Stack,
-};
+use crate::core::{executor::execute_expression, stack_entry::StackEntry, Stack};
 use crate::parser::Opcode;
 
+use super::super::store_access::{DataStore, FunctionStore};
 use super::instruction_generator::make_expression_writer;
 use super::instruction_test_helpers::*;
 use super::test_store::*;
@@ -19,9 +16,9 @@ fn test_drop_op() {
 
     // Now we need a stack and a store to run the op against
     let mut stack = Stack::new();
-    let mut test_store = TestStore::new();
+    let (function_store, mut data_store) = make_test_store();
 
-    assert!(execute_expression(&expr, &mut stack, &mut test_store).is_ok());
+    assert!(execute_expression(&expr, &mut stack, &function_store, &mut data_store).is_ok());
 
     assert_eq!(stack.working_count(), 1);
     assert_eq!(stack.working_top(1)[0], 42i32.into());
@@ -38,9 +35,9 @@ fn test_select_op() {
 
     // Now we need a stack and a store to run the op against
     let mut stack = Stack::new();
-    let mut test_store = TestStore::new();
+    let (function_store, mut data_store) = make_test_store();
 
-    assert!(execute_expression(&expr, &mut stack, &mut test_store).is_err());
+    assert!(execute_expression(&expr, &mut stack, &function_store, &mut data_store).is_err());
 
     // It should have failed part way through the instruction, leaving two operands on the stack
     assert_eq!(stack.working_count(), 2);
@@ -55,7 +52,7 @@ fn test_select_op() {
     expr.write_const_instruction(1i32);
     expr.write_single_byte_instruction(Opcode::Select);
 
-    assert!(execute_expression(&expr, &mut stack, &mut test_store).is_ok());
+    assert!(execute_expression(&expr, &mut stack, &function_store, &mut data_store).is_ok());
 
     assert_eq!(stack.working_count(), 1);
     assert_eq!(stack.working_top(1)[0], 42i32.into());
@@ -68,7 +65,7 @@ fn test_select_op() {
     expr.write_const_instruction(0i32);
     expr.write_single_byte_instruction(Opcode::Select);
 
-    assert!(execute_expression(&expr, &mut stack, &mut test_store).is_ok());
+    assert!(execute_expression(&expr, &mut stack, &function_store, &mut data_store).is_ok());
 
     assert_eq!(stack.working_count(), 1);
     assert_eq!(stack.working_top(1)[0], 69i32.into());
@@ -312,7 +309,8 @@ fn test_basic_ops() {
 
 fn do_local_get(
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
     index: u32,
 ) -> Option<StackEntry> {
     let mut expr = make_expression_writer();
@@ -320,7 +318,7 @@ fn do_local_get(
 
     let original_working_count = stack.working_count();
 
-    if let Err(_) = execute_expression(&expr, stack, store) {
+    if let Err(_) = execute_expression(&expr, stack, function_store, data_store) {
         None
     } else {
         if stack.working_count() == original_working_count + 1 {
@@ -335,7 +333,8 @@ fn do_local_get(
 
 fn do_local_set(
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
     index: u32,
     value: StackEntry,
 ) -> Option<()> {
@@ -345,7 +344,7 @@ fn do_local_set(
 
     let original_working_count = stack.working_count();
 
-    if let Err(_) = execute_expression(&expr, stack, store) {
+    if let Err(_) = execute_expression(&expr, stack, function_store, data_store) {
         None
     } else {
         if stack.working_count() == original_working_count {
@@ -358,7 +357,8 @@ fn do_local_set(
 
 fn do_local_tee(
     stack: &mut Stack,
-    store: &mut impl ExpressionStore,
+    function_store: &impl FunctionStore,
+    data_store: &mut impl DataStore,
     index: u32,
     value: StackEntry,
 ) -> Option<StackEntry> {
@@ -368,7 +368,7 @@ fn do_local_tee(
 
     let original_working_count = stack.working_count();
 
-    if let Err(_) = execute_expression(&expr, stack, store) {
+    if let Err(_) = execute_expression(&expr, stack, function_store, data_store) {
         None
     } else {
         if stack.working_count() == original_working_count + 1 {
@@ -384,70 +384,106 @@ fn do_local_tee(
 #[test]
 fn test_locals_ops() {
     let mut stack = Stack::new();
-    let mut store = TestStore::new();
+    let (function_store, mut data_store) = make_test_store();
 
     // Create a frame with room for five locals. The test frame initializes all of the locals
     // to I32Entry(0)
     assert!(stack.push_test_frame(5).is_ok());
 
     assert_eq!(
-        do_local_get(&mut stack, &mut store, 0),
+        do_local_get(&mut stack, &function_store, &mut data_store, 0),
         Some(StackEntry::I32Entry(0))
     );
     assert_eq!(
-        do_local_get(&mut stack, &mut store, 1),
+        do_local_get(&mut stack, &function_store, &mut data_store, 1),
         Some(StackEntry::I32Entry(0))
     );
     assert_eq!(
-        do_local_get(&mut stack, &mut store, 2),
+        do_local_get(&mut stack, &function_store, &mut data_store, 2),
         Some(StackEntry::I32Entry(0))
     );
     assert_eq!(
-        do_local_get(&mut stack, &mut store, 3),
+        do_local_get(&mut stack, &function_store, &mut data_store, 3),
         Some(StackEntry::I32Entry(0))
     );
     assert_eq!(
-        do_local_get(&mut stack, &mut store, 4),
+        do_local_get(&mut stack, &function_store, &mut data_store, 4),
         Some(StackEntry::I32Entry(0))
     );
-    assert_eq!(do_local_get(&mut stack, &mut store, 5), None);
+    assert_eq!(
+        do_local_get(&mut stack, &function_store, &mut data_store, 5),
+        None
+    );
 
     assert_eq!(
-        do_local_set(&mut stack, &mut store, 0, 42i32.into()),
+        do_local_set(
+            &mut stack,
+            &function_store,
+            &mut data_store,
+            0,
+            42i32.into()
+        ),
         Some(())
     );
     assert_eq!(
-        do_local_set(&mut stack, &mut store, 5, 42.0f32.into()),
+        do_local_set(
+            &mut stack,
+            &function_store,
+            &mut data_store,
+            5,
+            42.0f32.into()
+        ),
         None
     );
 
-    assert_eq!(do_local_get(&mut stack, &mut store, 0), Some(42i32.into()));
+    assert_eq!(
+        do_local_get(&mut stack, &function_store, &mut data_store, 0),
+        Some(42i32.into())
+    );
 
     assert_eq!(
-        do_local_tee(&mut stack, &mut store, 0, 42i32.into()),
+        do_local_tee(
+            &mut stack,
+            &function_store,
+            &mut data_store,
+            0,
+            42i32.into()
+        ),
         Some(42i32.into())
     );
     assert_eq!(
-        do_local_tee(&mut stack, &mut store, 5, 42.0f32.into()),
+        do_local_tee(
+            &mut stack,
+            &function_store,
+            &mut data_store,
+            5,
+            42.0f32.into()
+        ),
         None
     );
 
-    assert_eq!(do_local_get(&mut stack, &mut store, 0), Some(42i32.into()));
+    assert_eq!(
+        do_local_get(&mut stack, &function_store, &mut data_store, 0),
+        Some(42i32.into())
+    );
 
     // Check that locals still work as expected when there is a working value on the stack
     stack.push(42.0f32.into());
-    assert_eq!(do_local_get(&mut stack, &mut store, 0), Some(42i32.into()));
+    assert_eq!(
+        do_local_get(&mut stack, &function_store, &mut data_store, 0),
+        Some(42i32.into())
+    );
 }
 
 #[test]
 fn test_memory_ops() {
     let mut stack = Stack::new();
-    let mut store = TestStore::new();
+    let (function_store, mut data_store) = make_test_store();
 
-    store.enable_memory();
+    data_store.enable_memory();
 
     static FIXED_DATA: [u8; 8] = [0x0d, 0xf0, 0xad, 0xba, 0x0d, 0xf0, 0xad, 0xba];
-    store.write_data(0, 0, &FIXED_DATA).unwrap();
+    data_store.write_data(0, 0, &FIXED_DATA).unwrap();
 
     test_memory_load!(
         Opcode::I32Load,
@@ -455,12 +491,31 @@ fn test_memory_ops() {
         0,
         0,
         &mut stack,
-        &mut store,
+        &function_store,
+        &mut data_store,
         0xbaadf00d_u32
     );
 
-    test_memory_store!(Opcode::F32Store, 0, 0, 0, 42.0_f32, &mut stack, &mut store);
-    test_memory_load!(Opcode::F32Load, 0, 0, 0, &mut stack, &mut store, 42.0_f32);
+    test_memory_store!(
+        Opcode::F32Store,
+        0,
+        0,
+        0,
+        42.0_f32,
+        &mut stack,
+        &function_store,
+        &mut data_store
+    );
+    test_memory_load!(
+        Opcode::F32Load,
+        0,
+        0,
+        0,
+        &mut stack,
+        &function_store,
+        &mut data_store,
+        42.0_f32
+    );
 
     for (unsigned_opcode, signed_opcode, byte_count) in &[
         (Opcode::I32Load8U, Opcode::I32Load8S, 1),
@@ -480,11 +535,29 @@ fn test_memory_ops() {
             }
         }
 
-        store.write_data(0, 128, &unsigned_bytes).unwrap();
-        store.write_data(0, 256, &signed_bytes).unwrap();
+        data_store.write_data(0, 128, &unsigned_bytes).unwrap();
+        data_store.write_data(0, 256, &signed_bytes).unwrap();
 
-        test_memory_load!(*unsigned_opcode, 128, 0, 0, &mut stack, &mut store, 0_u32);
-        test_memory_load!(*signed_opcode, 256, 0, 0, &mut stack, &mut store, -1_i32);
+        test_memory_load!(
+            *unsigned_opcode,
+            128,
+            0,
+            0,
+            &mut stack,
+            &function_store,
+            &mut data_store,
+            0_u32
+        );
+        test_memory_load!(
+            *signed_opcode,
+            256,
+            0,
+            0,
+            &mut stack,
+            &function_store,
+            &mut data_store,
+            -1_i32
+        );
     }
 
     for (unsigned_opcode, signed_opcode, byte_count) in &[
@@ -506,11 +579,29 @@ fn test_memory_ops() {
             }
         }
 
-        store.write_data(0, 128, &unsigned_bytes).unwrap();
-        store.write_data(0, 256, &signed_bytes).unwrap();
+        data_store.write_data(0, 128, &unsigned_bytes).unwrap();
+        data_store.write_data(0, 256, &signed_bytes).unwrap();
 
-        test_memory_load!(*unsigned_opcode, 128, 0, 0, &mut stack, &mut store, 0_u64);
-        test_memory_load!(*signed_opcode, 256, 0, 0, &mut stack, &mut store, -1_i64);
+        test_memory_load!(
+            *unsigned_opcode,
+            128,
+            0,
+            0,
+            &mut stack,
+            &function_store,
+            &mut data_store,
+            0_u64
+        );
+        test_memory_load!(
+            *signed_opcode,
+            256,
+            0,
+            0,
+            &mut stack,
+            &function_store,
+            &mut data_store,
+            -1_i64
+        );
     }
 
     for (opcode, byte_count) in &[
@@ -520,12 +611,21 @@ fn test_memory_ops() {
     ] {
         let set_bytes: [u8; 8] = [0xff; 8];
 
-        store.write_data(0, 128, &set_bytes).unwrap();
+        data_store.write_data(0, 128, &set_bytes).unwrap();
 
-        test_memory_store!(*opcode, 128, 0, 0, 0_u32, &mut stack, &mut store);
+        test_memory_store!(
+            *opcode,
+            128,
+            0,
+            0,
+            0_u32,
+            &mut stack,
+            &function_store,
+            &mut data_store
+        );
 
         let mut check_bytes: [u8; 8] = [0xff; 8];
-        store.read_data(0, 128, &mut check_bytes).unwrap();
+        data_store.read_data(0, 128, &mut check_bytes).unwrap();
 
         for i in 0..8 {
             if i < *byte_count {
@@ -544,12 +644,21 @@ fn test_memory_ops() {
     ] {
         let set_bytes: [u8; 8] = [0xff; 8];
 
-        store.write_data(0, 128, &set_bytes).unwrap();
+        data_store.write_data(0, 128, &set_bytes).unwrap();
 
-        test_memory_store!(*opcode, 128, 0, 0, 0_u64, &mut stack, &mut store);
+        test_memory_store!(
+            *opcode,
+            128,
+            0,
+            0,
+            0_u64,
+            &mut stack,
+            &function_store,
+            &mut data_store
+        );
 
         let mut check_bytes: [u8; 8] = [0xff; 8];
-        store.read_data(0, 128, &mut check_bytes).unwrap();
+        data_store.read_data(0, 128, &mut check_bytes).unwrap();
 
         for i in 0..8 {
             if i < *byte_count {
@@ -563,7 +672,7 @@ fn test_memory_ops() {
     let mut expr = make_expression_writer();
     expr.write_single_leb_instruction(Opcode::MemorySize, 0);
 
-    assert!(execute_expression(&expr, &mut stack, &mut store).is_ok());
+    assert!(execute_expression(&expr, &mut stack, &function_store, &mut data_store).is_ok());
     assert_eq!(stack.working_count(), 1);
     assert_eq!(stack.working_top(1)[0], 1u32.into());
     stack.pop();
@@ -572,21 +681,21 @@ fn test_memory_ops() {
     expr.write_const_instruction(1_i32);
     expr.write_single_leb_instruction(Opcode::MemoryGrow, 0);
 
-    assert!(execute_expression(&expr, &mut stack, &mut store).is_ok());
+    assert!(execute_expression(&expr, &mut stack, &function_store, &mut data_store).is_ok());
     assert_eq!(stack.working_count(), 1);
     assert_eq!(stack.working_top(1)[0], 1u32.into());
     stack.pop();
 
-    assert_eq!(store.get_memory_size(0).ok(), Some(2));
+    assert_eq!(data_store.get_memory_size(0).ok(), Some(2));
 
     let mut expr = make_expression_writer();
     expr.write_const_instruction(10_i32);
     expr.write_single_leb_instruction(Opcode::MemoryGrow, 0);
 
-    assert!(execute_expression(&expr, &mut stack, &mut store).is_ok());
+    assert!(execute_expression(&expr, &mut stack, &function_store, &mut data_store).is_ok());
     assert_eq!(stack.working_count(), 1);
     assert_eq!(stack.working_top(1)[0], StackEntry::from(-1i32));
     stack.pop();
 
-    assert_eq!(store.get_memory_size(0).ok(), Some(2));
+    assert_eq!(data_store.get_memory_size(0).ok(), Some(2));
 }
